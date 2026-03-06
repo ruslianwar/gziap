@@ -29,3 +29,9 @@ dist-ssr
 
 # Gemini agent data
 .gemini/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example

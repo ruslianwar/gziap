@@ -1,0 +1,517 @@
+// File: src/pages/SusunMenuMBG.tsx
+import { useState, useRef, useEffect } from "react";
+import { supabase } from "../config/supabaseClient";
+
+// --- TYPESCRIPT INTERFACES ---
+interface MenuItem {
+  id: string;
+  kode: string;
+  nama: string;
+  gram: number;
+  harga_kg: number;
+  cost: number;
+  energi: number;
+  protein: number;
+  lemak: number;
+  karbo: number;
+  fe: number;
+  vitA: number;
+  ca: number;
+  zn: number;
+  vitC: number;
+}
+
+interface TkpiItem {
+  kode: string;
+  nama: string;
+  bdd?: string | number | null;
+  energi?: string | number | null;
+  protein?: string | number | null;
+  lemak?: string | number | null;
+  karbohidrat?: string | number | null;
+  besi?: string | number | null;
+  retinol?: string | number | null;
+  karoten?: string | number | null;
+  kalsium?: string | number | null;
+  seng?: string | number | null;
+  vit_c?: string | number | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any; 
+}
+
+interface TargetGroup {
+  label: string;
+  akgEnergi: number;
+  minE: number;
+  maxE: number;
+  akgMin: number;
+  akgMax: number;
+  minP: number;
+}
+
+interface SavedMenu {
+  id: string;
+  nama_paket: string;
+  kelompok_sasaran: string;
+  total_kalori: number;
+  status: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
+}
+
+// --- STANDAR MBG & AKG (Sesuai Pedoman Terbaru) ---
+const TARGET_GROUPS: Record<string, TargetGroup> = {
+  balita: { label: "Balita (1-5 tahun)", akgEnergi: 1350, minE: 275, maxE: 344, akgMin: 20, akgMax: 25, minP: 8 },
+  paud_tk_ra: { label: "PAUD/TK/RA (4-6 tahun)", akgEnergi: 1400, minE: 280, maxE: 350, akgMin: 20, akgMax: 25, minP: 8 },
+  sd_kelas_1_3: { label: "SD Kelas 1-3 (7-9 tahun)", akgEnergi: 1650, minE: 330, maxE: 413, akgMin: 20, akgMax: 25, minP: 10 },
+  sd_kelas_4_6: { label: "SD Kelas 4-6 (10-12 tahun)", akgEnergi: 1950, minE: 585, maxE: 683, akgMin: 30, akgMax: 35, minP: 15 },
+  smp_mts: { label: "SMP/MTs (13-15 tahun)", akgEnergi: 2225, minE: 668, maxE: 779, akgMin: 30, akgMax: 35, minP: 18 },
+  sma_ma: { label: "SMA/MA (16-18 tahun)", akgEnergi: 2375, minE: 788, maxE: 961, akgMin: 30, akgMax: 35, minP: 20 },
+  ibu_hamil: { label: "Ibu Hamil", akgEnergi: 2550, minE: 700, maxE: 900, akgMin: 30, akgMax: 35, minP: 20 },
+  ibu_menyusui: { label: "Ibu Menyusui", akgEnergi: 2650, minE: 700, maxE: 900, akgMin: 30, akgMax: 35, minP: 20 }
+};
+
+// --- KOMPONEN BANTUAN UI ---
+const BadgeLabel = ({ stat }: { stat: string }) => {
+  if (stat === "pass") return <span style={{ background: "#dcfce7", color: "#166534", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>✅ Pass</span>;
+  if (stat === "warn") return <span style={{ background: "#fef3c7", color: "#d97706", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>⚠️ Warn</span>;
+  return <span style={{ background: "#fee2e2", color: "#991b1b", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>❌ Fail</span>;
+};
+
+const ProgressBar = ({ label, current, min, max, unit, stat }: { label: string, current: number, min: number, max: number, unit: string, stat: string }) => {
+  const pct = Math.min(100, (current / max) * 100) || 0;
+  const color = stat === "pass" ? "#22c55e" : stat === "warn" ? "#f59e0b" : "#ef4444";
+  
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600, marginBottom: 4, color: "#334155" }}>
+        <span>{label}</span>
+        <span>{current.toFixed(1)} / {min}-{max} {unit}</span>
+      </div>
+      <div style={{ width: "100%", height: 8, background: "#e2e8f0", borderRadius: 4, overflow: "hidden" }}>
+        <div style={{ width: `${pct}%`, height: "100%", background: color, transition: "width 0.3s ease" }}></div>
+      </div>
+    </div>
+  );
+};
+
+export default function SusunMenuMBG() {
+  const [view, setView] = useState<"list" | "compose">("list");
+  const [savedMenus, setSavedMenus] = useState<SavedMenu[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Form State
+  const [sasaran, setSasaran] = useState<string>("sd_kelas_4_6");
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  
+  // Search State
+  const [search, setSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<TkpiItem[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedTkpi, setSelectedTkpi] = useState<TkpiItem | null>(null);
+  
+  // Input Bahan State
+  const [inputGram, setInputGram] = useState<number>(100);
+  const [inputHarga, setInputHarga] = useState<number>(0);
+
+  const nextId = useRef<number>(0);
+
+  // --- FETCH DATA ---
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      setIsLoading(true);
+      const { data } = await supabase.from("rencana_menu").select("*").order("created_at", { ascending: false });
+      if (isMounted && data) setSavedMenus(data as SavedMenu[]);
+      setIsLoading(false);
+    };
+    if (view === "list") loadData();
+    return () => { isMounted = false; };
+  }, [view]);
+
+  const handleDeleteMenu = async (id: string) => {
+    if (!window.confirm("Yakin ingin menghapus menu ini?")) return;
+    await supabase.from("rencana_menu").delete().eq("id", id);
+    const { data } = await supabase.from("rencana_menu").select("*").order("created_at", { ascending: false });
+    if (data) setSavedMenus(data as SavedMenu[]);
+  };
+
+  const parseGizi = (val: string | number | null | undefined) => {
+    if (!val || val === "-" || val === "Tr" || String(val).trim() === "") return 0;
+    return parseFloat(String(val).replace(",", ".")) || 0;
+  };
+
+  // --- SEARCH TKPI ---
+  const handleSearch = async (text: string) => {
+    setSearch(text);
+    if (text.length < 3) { setSearchResults([]); return; }
+    setIsSearching(true);
+    const { data } = await supabase.from("data_tkpi").select("*").ilike("nama", `%${text}%`).limit(8);
+    if (data) setSearchResults(data as TkpiItem[]);
+    setIsSearching(false);
+  };
+
+  const selectBahan = (item: TkpiItem) => {
+    setSelectedTkpi(item);
+    setSearch("");
+    setSearchResults([]);
+    setInputGram(100);
+    setInputHarga(0);
+  };
+
+  const handleAddFood = () => {
+    if (!selectedTkpi) return;
+    if (inputGram <= 0) { alert("Gramase harus lebih dari 0"); return; }
+    
+    const bdd = parseGizi(selectedTkpi.bdd) || 100;
+    const factor = (inputGram / 100) * (bdd / 100);
+    const costBahan = (inputGram / 1000) * inputHarga;
+
+    const newFood: MenuItem = {
+      id: selectedTkpi.kode + "-" + (nextId.current++),
+      kode: selectedTkpi.kode,
+      nama: selectedTkpi.nama,
+      gram: inputGram,
+      harga_kg: inputHarga,
+      cost: costBahan,
+      energi: parseGizi(selectedTkpi.energi) * factor,
+      protein: parseGizi(selectedTkpi.protein) * factor,
+      lemak: parseGizi(selectedTkpi.lemak) * factor,
+      karbo: parseGizi(selectedTkpi.karbohidrat) * factor,
+      fe: parseGizi(selectedTkpi.besi) * factor,
+      vitA: parseGizi(selectedTkpi.retinol || selectedTkpi.karoten) * factor,
+      ca: parseGizi(selectedTkpi.kalsium) * factor,
+      zn: parseGizi(selectedTkpi.seng) * factor,
+      vitC: parseGizi(selectedTkpi.vit_c) * factor,
+    };
+
+    setMenuItems([...menuItems, newFood]);
+    setSelectedTkpi(null);
+  };
+
+  // --- RACIK OTOMATIS (Sesuai SD 4-6) ---
+  const racikOtomatis = () => {
+    setSasaran("sd_kelas_4_6");
+    const dummyMenu: MenuItem[] = [
+      { id: "M1-"+(nextId.current++), kode: "A001", nama: "Nasi Putih", gram: 150, harga_kg: 14000, cost: 2100, energi: 262.5, protein: 4.5, lemak: 0.3, karbo: 59.7, fe: 0, vitA: 0, ca: 0, zn: 0, vitC: 0 },
+      { id: "M2-"+(nextId.current++), kode: "B001", nama: "Daging Ayam BDD", gram: 100, harga_kg: 38000, cost: 3800, energi: 288, protein: 18.2, lemak: 25, karbo: 0, fe: 1.5, vitA: 50, ca: 14, zn: 2.0, vitC: 0 },
+      { id: "M3-"+(nextId.current++), kode: "C001", nama: "Tempe Kedelai", gram: 50, harga_kg: 16000, cost: 800, energi: 100, protein: 10.4, lemak: 4.4, karbo: 6.8, fe: 1.2, vitA: 0, ca: 50, zn: 0.8, vitC: 0 },
+      { id: "M4-"+(nextId.current++), kode: "D001", nama: "Bayam Rebus", gram: 100, harga_kg: 8000, cost: 800, energi: 36, protein: 3.0, lemak: 0.4, karbo: 7.2, fe: 3.5, vitA: 500, ca: 160, zn: 0.8, vitC: 25 },
+    ];
+    setMenuItems(dummyMenu);
+  };
+
+  // --- VALIDATION ENGINE ---
+  const target = TARGET_GROUPS[sasaran];
+  
+  const totals = menuItems.reduce((acc, m) => ({
+    e: acc.e + m.energi, p: acc.p + m.protein, l: acc.l + m.lemak, k: acc.k + m.karbo, c: acc.c + m.cost
+  }), { e: 0, p: 0, l: 0, k: 0, c: 0 });
+
+  const finalCost = totals.c * 1.1; // + 10% Bumbu
+
+  const evaluate = (pass: boolean, warn: boolean) => pass ? "pass" : warn ? "warn" : "fail";
+
+  // 1. Energi
+  const statE = evaluate(
+    totals.e >= target.minE && totals.e <= target.maxE,
+    (totals.e >= target.minE * 0.9 && totals.e < target.minE) || (totals.e > target.maxE && totals.e <= target.maxE * 1.1)
+  );
+
+  // 2. Protein
+  const statP = evaluate(totals.p >= target.minP, totals.p >= target.minP * 0.8 && totals.p < target.minP);
+
+  // 3. Food Cost
+  const statC = evaluate(
+    finalCost >= 8000 && finalCost <= 10000,
+    (finalCost >= 6000 && finalCost < 8000) || (finalCost > 10000 && finalCost <= 12000)
+  );
+
+  // 4. Makro
+  const pctPro = totals.e > 0 ? (totals.p * 4 / totals.e) * 100 : 0;
+  const pctLem = totals.e > 0 ? (totals.l * 9 / totals.e) * 100 : 0;
+  const pctKar = totals.e > 0 ? (totals.k * 4 / totals.e) * 100 : 0;
+  
+  const pOk = pctPro >= 10 && pctPro <= 15;
+  const lOk = pctLem >= 20 && pctLem <= 30;
+  const kOk = pctKar >= 55 && pctKar <= 65;
+  const makroFails = (!pOk?1:0) + (!lOk?1:0) + (!kOk?1:0);
+  const statM = makroFails === 0 ? "pass" : makroFails === 1 ? "warn" : "fail";
+
+  // 5. % AKG Energi
+  const pctAkgE = (totals.e / target.akgEnergi) * 100;
+  const statAkg = evaluate(
+    pctAkgE >= target.akgMin && pctAkgE <= target.akgMax,
+    (pctAkgE >= target.akgMin * 0.9 && pctAkgE < target.akgMin) || (pctAkgE > target.akgMax && pctAkgE <= target.akgMax * 1.1)
+  );
+
+  const failsCount = [statE, statP, statC, statM, statAkg].filter(s => s === "fail").length;
+  let statusFinal = { label: "❌ Tidak Sesuai", color: "#991b1b", bg: "#fef2f2" };
+  if (failsCount === 0) statusFinal = { label: "✅ Valid & Sesuai", color: "#166534", bg: "#f0fdf4" };
+  else if (failsCount <= 2) statusFinal = { label: "⚠️ Perlu Revisi", color: "#d97706", bg: "#fffbeb" };
+
+  const handleSave = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const payload = {
+      dibuat_oleh: user.id,
+      nama_paket: `Menu MBG - ${target.label}`,
+      kelompok_sasaran: target.label,
+      total_kalori: totals.e,
+      data_menu: { 'Makan Siang': menuItems }, 
+      status: failsCount === 0 ? 'approved' : 'draft'
+    };
+    await supabase.from('rencana_menu').insert([payload]);
+    alert("Menu Berhasil Disimpan!");
+    setView("list");
+  };
+
+  // ==========================================
+  // VIEW 1: DAFTAR MENU (SUMMARY PAGE)
+  // ==========================================
+  if (view === "list") {
+    return (
+      <div style={{ paddingBottom: 40 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <h2 style={{ margin: 0, fontSize: 24, color: "#1e293b" }}>Manajemen Susun Menu</h2>
+          <button onClick={() => setView("compose")} style={{ background: "#10b981", color: "#fff", padding: "10px 20px", borderRadius: 8, fontWeight: 700, border: "none", cursor: "pointer", boxShadow: "0 4px 6px -1px rgba(16, 185, 129, 0.3)" }}>
+            + Susun Menu Baru
+          </button>
+        </div>
+
+        <div className="card" style={{ padding: 24, borderRadius: 16, border: "1px solid #e2e8f0" }}>
+          <h3 style={{ marginTop: 0, fontSize: 16, color: "#475569" }}>Daftar Rencana Menu MBG</h3>
+          {isLoading ? <p>Memuat data...</p> : (
+            <table style={{ width: "100%", textAlign: "left", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid #e2e8f0", color: "#64748b", fontSize: 13 }}>
+                  <th style={{ padding: 12 }}>NAMA PAKET</th>
+                  <th>SASARAN</th>
+                  <th>TOTAL ENERGI</th>
+                  <th>STATUS</th>
+                  <th>AKSI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {savedMenus.map(m => (
+                  <tr key={m.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                    <td style={{ padding: 12, fontWeight: 600, color: "#0f172a" }}>{m.nama_paket}</td>
+                    <td style={{ fontSize: 13, color: "#475569" }}>{m.kelompok_sasaran}</td>
+                    <td style={{ fontSize: 13, fontWeight: 600 }}>{m.total_kalori.toFixed(0)} kkal</td>
+                    <td>
+                      <span style={{ background: m.status === 'approved' ? "#dcfce7" : "#fef3c7", color: m.status === 'approved' ? "#166534" : "#92400e", padding: "4px 8px", borderRadius: 4, fontSize: 12, fontWeight: 600 }}>
+                        {m.status === 'approved' ? '✅ Valid' : '⚠️ Draft'}
+                      </span>
+                    </td>
+                    <td>
+                      <button onClick={() => handleDeleteMenu(m.id)} style={{ background: "#fee2e2", color: "#991b1b", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Hapus</button>
+                    </td>
+                  </tr>
+                ))}
+                {savedMenus.length === 0 && <tr><td colSpan={5} style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Belum ada menu yang disusun.</td></tr>}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VIEW 2: COMPOSER (SUSUN MENU MBG)
+  // ==========================================
+  return (
+    <div style={{ paddingBottom: 40 }}>
+      {/* HEADER CONTROLS */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <button onClick={() => setView("list")} style={{ background: "transparent", border: "1px solid #cbd5e1", padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 600, color: "#475569" }}>
+            ⬅️ Kembali
+          </button>
+          <h2 style={{ margin: 0, fontSize: 20, color: "#1e293b" }}>Peracik Menu</h2>
+        </div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <select value={sasaran} onChange={e => setSasaran(e.target.value)} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #cbd5e1", fontWeight: 600, color: "#0f172a", outline: "none" }}>
+            {Object.entries(TARGET_GROUPS).map(([key, val]) => (
+              <option key={key} value={key}>Target: {val.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* HORIZONTAL CARDS */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16, marginBottom: 24 }}>
+        <div style={{ background: "#fff", padding: "16px", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><span style={{ background: "#dcfce7", padding: 4, borderRadius: 4 }}>💰</span> Total Anggaran</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginTop: 8 }}>Rp {finalCost.toLocaleString("id-ID")}</div>
+        </div>
+        <div style={{ background: "#fff", padding: "16px", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><span style={{ background: "#dbeafe", padding: 4, borderRadius: 4 }}>⚡</span> Total Energi</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginTop: 8 }}>{totals.e.toFixed(0)} <span style={{ fontSize: 12, color: "#94a3b8" }}>kkal</span></div>
+        </div>
+        <div style={{ background: "#fff", padding: "16px", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><span style={{ background: "#fee2e2", padding: 4, borderRadius: 4 }}>🥩</span> Total Protein</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginTop: 8 }}>{totals.p.toFixed(1)} <span style={{ fontSize: 12, color: "#94a3b8" }}>g</span></div>
+        </div>
+        <div style={{ background: "#fff", padding: "16px", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><span style={{ background: "#fef3c7", padding: 4, borderRadius: 4 }}>🧈</span> Total Lemak</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginTop: 8 }}>{totals.l.toFixed(1)} <span style={{ fontSize: 12, color: "#94a3b8" }}>g</span></div>
+        </div>
+        <div style={{ background: "#fff", padding: "16px", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><span style={{ background: "#f3e8ff", padding: 4, borderRadius: 4 }}>🍞</span> Total Karbo</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginTop: 8 }}>{totals.k.toFixed(1)} <span style={{ fontSize: 12, color: "#94a3b8" }}>g</span></div>
+        </div>
+      </div>
+
+      {/* INPUT BAR */}
+      <div style={{ background: "#fff", padding: 20, borderRadius: 16, border: "1px solid #e2e8f0", marginBottom: 24, overflow: "visible", position: "relative" }}>
+        <div style={{ display: "flex", gap: 16, alignItems: "flex-end" }}>
+          
+          <div style={{ flex: 2, position: "relative", zIndex: 50 }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6 }}>🔍 Cari Bahan Pangan (TKPI)</label>
+            <input type="text" value={search} onChange={e => handleSearch(e.target.value)} placeholder="Ketik untuk mencari (Mis: Nasi, Telur)..." style={{ width: "100%", padding: "12px 16px", borderRadius: 8, border: "1px solid #cbd5e1", outline: "none", fontSize: 14 }} />
+            
+            {searchResults.length > 0 && (
+              <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, marginTop: 4, maxHeight: 250, overflowY: "auto", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)", zIndex: 999 }}>
+                {searchResults.map(item => (
+                  <div key={item.kode} onClick={() => selectBahan(item)} style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", cursor: "pointer", fontSize: 13, display: "flex", justifyContent: "space-between" }}>
+                    <strong style={{ color: "#0f172a" }}>{item.nama}</strong>
+                    <span style={{ color: "#64748b" }}>E:{item.energi} P:{item.protein}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6 }}>Berat (Gram)</label>
+            <input type="number" value={inputGram} onChange={e => setInputGram(Number(e.target.value))} style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px solid #cbd5e1", outline: "none", background: selectedTkpi ? "#fff" : "#f8fafc" }} disabled={!selectedTkpi} />
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6 }}>Harga/Kg (Rp)</label>
+            <input type="number" value={inputHarga === 0 ? '' : inputHarga} onChange={e => setInputHarga(Number(e.target.value))} placeholder="Mis: 15000" style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px solid #cbd5e1", outline: "none", background: selectedTkpi ? "#fff" : "#f8fafc" }} disabled={!selectedTkpi} />
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <button onClick={handleAddFood} disabled={!selectedTkpi} style={{ width: "100%", padding: "12px", background: selectedTkpi ? "#10b981" : "#cbd5e1", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: selectedTkpi ? "pointer" : "not-allowed" }}>
+              + Tambah
+            </button>
+          </div>
+        </div>
+
+        {selectedTkpi && (
+          <div style={{ fontSize: 12, color: "#10b981", fontWeight: 600, marginTop: 10 }}>
+            ✅ Bahan terpilih: {selectedTkpi.nama}. Silakan isi Berat dan Harga, lalu klik Tambah.
+          </div>
+        )}
+        {isSearching && <div style={{ fontSize: 11, color: "#3b82f6", marginTop: 6, position: "absolute" }}>⏳ Mencari di database...</div>}
+      </div>
+
+      {/* DUA KOLOM BAWAH (Tabel & Validasi) */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 24, alignItems: "start" }}>
+        
+        {/* KOLOM KIRI: Rincian Menu */}
+        <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", overflow: "hidden" }}>
+          <div style={{ padding: "20px 24px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 style={{ margin: 0, fontSize: 16, color: "#0f172a" }}>Rincian Menu Saat Ini</h3>
+          </div>
+          <table style={{ width: "100%", textAlign: "left", fontSize: 13, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "#f8fafc", color: "#64748b" }}>
+                <th style={{ padding: "12px 24px" }}>BAHAN PANGAN</th>
+                <th>BERAT (G)</th>
+                <th>ANGGARAN (RP)</th>
+                <th>ENERGI</th>
+                <th>LEMAK</th>
+                <th>PROTEIN</th>
+                <th>KARBO</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {menuItems.map((m, i) => (
+                <tr key={m.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  <td style={{ padding: "12px 24px", fontWeight: 600, color: "#334155" }}>{m.nama}</td>
+                  <td>{m.gram}</td>
+                  <td style={{ color: "#059669", fontWeight: 600 }}>Rp {m.cost.toLocaleString("id-ID")}</td>
+                  <td>{m.energi.toFixed(1)}</td>
+                  <td>{m.lemak.toFixed(1)}</td>
+                  <td>{m.protein.toFixed(1)}</td>
+                  <td>{m.karbo.toFixed(1)}</td>
+                  <td style={{ paddingRight: 16 }}><button onClick={() => setMenuItems(menuItems.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16 }}>×</button></td>
+                </tr>
+              ))}
+              {menuItems.length === 0 && <tr><td colSpan={8} style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>Belum ada bahan yang ditambahkan.</td></tr>}
+            </tbody>
+          </table>
+
+          {/* ACTION BUTTONS */}
+          <div style={{ padding: "20px 24px", display: "flex", gap: 12, background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
+            <button onClick={handleSave} disabled={menuItems.length === 0} style={{ flex: 1, padding: "12px", background: "#3b82f6", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: menuItems.length === 0 ? "not-allowed" : "pointer" }}>
+              💾 Simpan Menu
+            </button>
+            <button onClick={() => setMenuItems([])} style={{ flex: 1, padding: "12px", background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}>
+              🗑️ Kosongkan
+            </button>
+            <button onClick={racikOtomatis} style={{ flex: 1, padding: "12px", background: "#10b981", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}>
+              ✨ Racik Otomatis
+            </button>
+          </div>
+        </div>
+
+        {/* KOLOM KANAN: Analisis Kepatuhan */}
+        <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: 24 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <h3 style={{ margin: 0, fontSize: 16, color: "#0f172a" }}>Analisis Kepatuhan Gizi</h3>
+            <div style={{ background: statusFinal.bg, color: statusFinal.color, padding: "6px 12px", borderRadius: 20, fontSize: 12, fontWeight: 800 }}>
+              {statusFinal.label}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* 1. Bar Energi */}
+            <ProgressBar label="Energi (kkal)" current={totals.e} min={target.minE} max={target.maxE} unit="kkal" stat={statE} />
+            
+            {/* 2. Bar Protein */}
+            <ProgressBar label="Protein (g)" current={totals.p} min={target.minP} max={target.minP * 1.5} unit="g" stat={statP} />
+
+            {/* 3. Makro Panel */}
+            <div style={{ background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #e2e8f0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>Komposisi Makro</span>
+                <BadgeLabel stat={statM} />
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#475569" }}>
+                <span style={{ color: pOk ? "#16a34a" : "#ef4444" }}>Pro: {pctPro.toFixed(1)}% (Target 10-15%)</span>
+                <span style={{ color: lOk ? "#16a34a" : "#ef4444" }}>Lem: {pctLem.toFixed(1)}% (Target 20-30%)</span>
+              </div>
+              <div style={{ fontSize: 12, color: kOk ? "#16a34a" : "#ef4444", marginTop: 4 }}>
+                Karbo: {pctKar.toFixed(1)}% (Target 55-65%)
+              </div>
+            </div>
+
+            {/* 4. Cost Panel */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid #e2e8f0" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>Anggaran (+10% Bumbu)</div>
+                <div style={{ fontSize: 11, color: "#64748b" }}>Target: Rp 8.000 - Rp 10.000</div>
+              </div>
+              <BadgeLabel stat={statC} />
+            </div>
+
+            {/* 5. AKG Panel */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>Pemenuhan %AKG</div>
+                <div style={{ fontSize: 11, color: "#64748b" }}>Capaian: {pctAkgE.toFixed(1)}% (Target {target.akgMin}-{target.akgMax}%)</div>
+              </div>
+              <BadgeLabel stat={statAkg} />
+            </div>
+          </div>
+        </div>
+        
+      </div>
+    </div>
+  );
+}

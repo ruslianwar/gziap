@@ -1,0 +1,390 @@
+// File: src/utils/constants.ts
+export const ROLES: Record<string, any> = {
+  admin: { label: "Super Admin", badge: "b-gold" },
+  ahli_gizi: { label: "Ahli Gizi", badge: "b-green" },
+  operator: { label: "Operator Sekolah", badge: "b-blue" },
+  dinas: { label: "Kepala Dinas", badge: "b-pink" },
+};
+
+export const AKG_GROUPS: Record<string, any> = {
+  "PAUD (3-5 th)": {
+    energi: 1460,
+    protein: 20,
+    lemak: 53,
+    karbo: 215,
+    serat: 16,
+    kalsium: 1000,
+    besi: 8,
+  },
+  "SD (6-9 th)": {
+    energi: 1600,
+    protein: 40,
+    lemak: 57,
+    karbo: 254,
+    serat: 22,
+    kalsium: 1000,
+    besi: 10,
+  },
+  "SD (10-12 th)": {
+    energi: 2000,
+    protein: 50,
+    lemak: 67,
+    karbo: 300,
+    serat: 26,
+    kalsium: 1200,
+    besi: 13,
+  },
+  "SMP (13-15 th)": {
+    energi: 2400,
+    protein: 70,
+    lemak: 80,
+    karbo: 350,
+    serat: 30,
+    kalsium: 1200,
+    besi: 15,
+  },
+};
+
+// Sebagian contoh FOOD_DB agar tidak terlalu panjang, Anda bisa melengkapinya nanti dari HTML
+export const FOOD_DB = [
+  {
+    id: 1,
+    nama: "Nasi putih",
+    kat: "Makanan Pokok",
+    urt: "1 centong (100g)",
+    energi: 175,
+    protein: 3.7,
+    lemak: 0.1,
+    karbo: 40.6,
+    serat: 0.2,
+    kalsium: 5,
+    besi: 0.5,
+    vit_c: 0,
+    harga_per_100g: 800,
+  },
+  {
+    id: 8,
+    nama: "Ayam (dada)",
+    kat: "Lauk Hewani",
+    urt: "1 potong (80g)",
+    energi: 153,
+    protein: 32.8,
+    lemak: 1.8,
+    karbo: 0,
+    serat: 0,
+    kalsium: 14,
+    besi: 0.9,
+    vit_c: 0,
+    harga_per_100g: 18000,
+  },
+  {
+    id: 21,
+    nama: "Bayam",
+    kat: "Sayur",
+    urt: "1 gelas (100g)",
+    energi: 36,
+    protein: 3.5,
+    lemak: 0.5,
+    karbo: 6.5,
+    serat: 0.8,
+    kalsium: 267,
+    besi: 3.9,
+    vit_c: 80,
+    harga_per_100g: 3000,
+  },
+  {
+    id: 29,
+    nama: "Pepaya",
+    kat: "Buah",
+    urt: "1 potong (150g)",
+    energi: 46,
+    protein: 0.5,
+    lemak: 0.1,
+    karbo: 11.7,
+    serat: 1.8,
+    kalsium: 23,
+    besi: 1.7,
+    vit_c: 78,
+    harga_per_100g: 2500,
+  },
+];
+
+// Tambahan di file src/utils/constants.ts
+
+export const SUPPLIER_DATA = [
+  {
+    id: 1,
+    nama: "UD Maju Bersama",
+    jenis: "UMKM",
+    kontak: "Bu Rahma",
+    no_hp: "081234567890",
+    komoditas: "Sayur mayur segar",
+    kecamatan: "Ungaran Barat",
+    status: "aktif",
+    rating: 4.8,
+    color: "#40916c",
+  },
+  {
+    id: 2,
+    nama: "BUM Desa Bawen",
+    jenis: "BUM Desa",
+    kontak: "Pak Sugeng",
+    no_hp: "085678901234",
+    komoditas: "Beras, ubi, singkong",
+    kecamatan: "Bawen",
+    status: "aktif",
+    rating: 4.5,
+    color: "#6366f1",
+  },
+  {
+    id: 3,
+    nama: "Koperasi Tani Sejahtera",
+    jenis: "Koperasi",
+    kontak: "Bu Yanti",
+    no_hp: "082345678901",
+    komoditas: "Ikan, telur ayam",
+    kecamatan: "Bergas",
+    status: "aktif",
+    rating: 4.2,
+    color: "#e9c46a",
+  },
+];
+
+// Fungsi kecil untuk memformat angka menjadi Rupiah (opsional tapi berguna)
+export const formatRp = (angka: number) => {
+  return angka.toLocaleString("id-ID");
+};
+
+// Tambahan di file src/utils/constants.ts
+
+export const SEKOLAH_DATA = [
+  {
+    id: 1,
+    nama: "SDN 01 Ungaran",
+    kecamatan: "Ungaran Barat",
+    tingkat: "SD",
+    kelompok: "SD (6-9 th)",
+    siswa: 312,
+    kelas: 12,
+    operator: "Bu Sari",
+    status: "aktif",
+    color: "#40916c",
+  },
+  {
+    id: 2,
+    nama: "SDN 02 Ungaran",
+    kecamatan: "Ungaran Barat",
+    tingkat: "SD",
+    kelompok: "SD (10-12 th)",
+    siswa: 287,
+    kelas: 11,
+    operator: "Pak Heru",
+    status: "aktif",
+    color: "#6366f1",
+  },
+];
+
+export const ANTRO_DATA = [
+  {
+    id: 1,
+    nama: "Ahmad Rizky",
+    sekolah: "SDN 01 Ungaran",
+    kelas: "4A",
+    tgl: "2025-01-15",
+    bb: 26,
+    tb: 128,
+    lk: 51,
+    lila: 17,
+    umur_bln: 108,
+    status: "kurus",
+    catatan: "Perlu perhatian",
+  },
+  {
+    id: 2,
+    nama: "Siti Nurhaliza",
+    sekolah: "SDN 01 Ungaran",
+    kelas: "5B",
+    tgl: "2025-01-15",
+    bb: 32,
+    tb: 135,
+    lk: 52,
+    lila: 19,
+    umur_bln: 120,
+    status: "normal",
+    catatan: "",
+  },
+  {
+    id: 3,
+    nama: "Budi Santoso",
+    sekolah: "SDN 02 Ungaran",
+    kelas: "7C",
+    tgl: "2025-01-15",
+    bb: 55,
+    tb: 152,
+    lk: 54,
+    lila: 24,
+    umur_bln: 144,
+    status: "gemuk",
+    catatan: "Kurangi lemak",
+  },
+  {
+    id: 4,
+    nama: "Dewi Rahayu",
+    sekolah: "SDN 02 Ungaran",
+    kelas: "3A",
+    tgl: "2025-01-15",
+    bb: 19,
+    tb: 112,
+    lk: 49,
+    lila: 15,
+    umur_bln: 96,
+    status: "stunting",
+    catatan: "Rujuk puskesmas",
+  },
+];
+
+// Tambahan di file src/utils/constants.ts
+
+export const STOK_DATA = [
+  {
+    id: 1,
+    nama: "Beras putih",
+    sat: "kg",
+    stok: 250,
+    min: 50,
+    masuk: "2025-01-20",
+    kadaluarsa: "2025-06-20",
+    supplier: "BUM Desa Bawen",
+    harga: 12000,
+  },
+  {
+    id: 2,
+    nama: "Ayam potong",
+    sat: "kg",
+    stok: 45,
+    min: 20,
+    masuk: "2025-01-27",
+    kadaluarsa: new Date(Date.now() + 86400000).toISOString().split("T")[0],
+    supplier: "UD Sumber Protein",
+    harga: 35000,
+  }, // Exp besok
+  {
+    id: 3,
+    nama: "Bayam",
+    sat: "ikat",
+    stok: 30,
+    min: 40,
+    masuk: "2025-01-28",
+    kadaluarsa: "2025-01-30",
+    supplier: "UD Maju Bersama",
+    harga: 3000,
+  }, // Stok rendah & expired
+];
+// Tambahan di file src/utils/constants.ts
+
+export const DIST_BASE: Record<string, any[]> = {
+  // Menggunakan tanggal hari ini dan kemarin sebagai contoh
+  "2026-02-26": [
+    {
+      id: 1,
+      sekolah: "SDN 01 Ungaran",
+      plan: 312,
+      real: 312,
+      status: "selesai",
+      jam: "08:10",
+      catatan: "",
+    },
+    {
+      id: 2,
+      sekolah: "SDN 02 Ungaran",
+      plan: 287,
+      real: 250,
+      status: "proses",
+      jam: "09:00",
+      catatan: "Masih berlangsung",
+    },
+    {
+      id: 3,
+      sekolah: "SDN 05 Bawen",
+      plan: 198,
+      real: 0,
+      status: "belum",
+      jam: "-",
+      catatan: "",
+    },
+  ],
+  "2026-02-25": [
+    {
+      id: 1,
+      sekolah: "SDN 01 Ungaran",
+      plan: 312,
+      real: 312,
+      status: "selesai",
+      jam: "08:00",
+      catatan: "",
+    },
+    {
+      id: 2,
+      sekolah: "SDN 02 Ungaran",
+      plan: 287,
+      real: 287,
+      status: "selesai",
+      jam: "08:30",
+      catatan: "",
+    },
+    {
+      id: 3,
+      sekolah: "SDN 05 Bawen",
+      plan: 198,
+      real: 198,
+      status: "selesai",
+      jam: "08:50",
+      catatan: "",
+    },
+  ],
+};
+
+// Tambahan di file src/utils/constants.ts
+
+export const USERS_DATA = [
+  {
+    id: 1,
+    nama: "Super Admin",
+    email: "admin@mbg.id",
+    role: "admin",
+    unit: "BGN Pusat",
+    status: "aktif",
+    avatar: "SA",
+    color: "#e9c46a",
+  },
+  {
+    id: 2,
+    nama: "Siti Rahayu, S.Gz",
+    email: "siti.rahayu@dinkes.id",
+    role: "ahli_gizi",
+    unit: "Dinkes Kab. Semarang",
+    status: "aktif",
+    avatar: "SR",
+    color: "#40916c",
+  },
+  {
+    id: 3,
+    nama: "Budi Santoso",
+    email: "budi.opr@sdn01.id",
+    role: "operator",
+    unit: "SDN 01 Ungaran",
+    status: "aktif",
+    avatar: "BS",
+    color: "#6366f1",
+  },
+  {
+    id: 4,
+    nama: "Dr. Hermawan",
+    email: "hermawan@dinkes.id",
+    role: "dinas",
+    unit: "Kepala Dinas Kesehatan",
+    status: "nonaktif",
+    avatar: "DH",
+    color: "#ec4899",
+  },
+];

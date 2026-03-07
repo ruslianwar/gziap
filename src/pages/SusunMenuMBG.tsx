@@ -78,7 +78,7 @@ const TARGET_GROUPS: Record<string, TargetGroup> = {
   pendidik: { label: "Pendidik / Tenaga Kependidikan", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 713, maxE: 831, minP: 21.0, maxP: 24.5, minL: 22.5, maxL: 26.3, minK: 105.0, maxK: 122.5, budgetTarget: 10000 },
   balita_siang: { label: "Anak Balita (Siang)", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 405, maxE: 473, minP: 6.0, maxP: 7.0, minL: 13.5, maxL: 15.8, minK: 64.5, maxK: 75.3, budgetTarget: 8000 },
   balita_pagi: { label: "Anak Balita 13-59 bln (Pagi)", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 270, maxE: 338, minP: 4.0, maxP: 5.0, minL: 9.0, maxL: 11.3, minK: 43.0, maxK: 53.8, budgetTarget: 8000 },
-  bayi_siang: { label: "Balita 6-11 bulan (Siang)", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 240, maxE: 280, minP: 4.5, maxP: 5.2, minL: 10.5, maxL: 12.2, minK: 31.5, maxK: 36.7, budgetTarget: 8000 },
+  bayi_pagi: { label: "Bayi 6-11 bulan (Pagi/MPASI)", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 160, maxE: 200, minP: 3.0, maxP: 3.8, minL: 7.0, maxL: 8.8, minK: 21.0, maxK: 26.3, budgetTarget: 8000 },
   ibu_hamil: { label: "Ibu Hamil", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 753, maxE: 879, minP: 22.1, maxP: 25.8, minL: 20.2, maxL: 23.6, minK: 118.5, maxK: 138.3, budgetTarget: 10000 },
   ibu_menyusui: { label: "Ibu Menyusui", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 782, maxE: 912, minP: 26.3, maxP: 30.6, minL: 20.2, maxL: 23.5, minK: 123.0, maxK: 143.5, budgetTarget: 10000 }
 };
@@ -90,18 +90,39 @@ const BadgeLabel = ({ stat }: { stat: string }) => {
   return <span style={{ background: "#fee2e2", color: "#991b1b", padding: "4px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>❌ Fail</span>;
 };
 
-const ProgressBar = ({ label, current, min, max, unit, stat }: { label: string, current: number, min: number, max: number, unit: string, stat: string }) => {
-  const pct = Math.min(100, (current / max) * 100) || 0;
-  const color = stat === "pass" ? "#22c55e" : stat === "warn" ? "#f59e0b" : "#ef4444";
+const ProgressBar = ({ label, current, min, max, unit }: { label: string, current: number, min: number, max: number, unit: string, stat?: string }) => {
+  // Skala bar: 0 → max*1.3 (agar kelebihan tetap terlihat)
+  const scale = max * 1.3 || 1;
+  const pct = Math.min(100, Math.max(0, (current / scale) * 100));
+  // Zona target (min-max) sebagai persentase dari skala
+  const zoneLeft = (min / scale) * 100;
+  const zoneWidth = ((max - min) / scale) * 100;
+
+  // Warna semantik berdasarkan posisi current
+  let barColor = "#3b82f6"; // 🔵 Biru: kurang dari target
+  let statusText = "Kurang";
+  if (current >= min && current <= max) {
+    barColor = "#22c55e"; // 🟢 Hijau: sesuai target
+    statusText = "Sesuai";
+  } else if (current > max && current <= max * 1.15) {
+    barColor = "#f59e0b"; // 🟡 Kuning: sedikit berlebih
+    statusText = "Sedikit Lebih";
+  } else if (current > max * 1.15) {
+    barColor = "#ef4444"; // 🔴 Merah: jauh melebihi
+    statusText = "Berlebih";
+  }
 
   return (
-    <div style={{ marginBottom: 12 }}>
+    <div style={{ marginBottom: 14 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 600, marginBottom: 4, color: "#334155" }}>
-        <span>{label}</span>
-        <span>{current.toFixed(1)} / {min}-{max} {unit}</span>
+        <span>{label} <span style={{ color: barColor, fontSize: 11 }}>({statusText})</span></span>
+        <span style={{ color: barColor }}>{current.toFixed(1)} <span style={{ color: "#94a3b8", fontWeight: 400 }}>/ {min.toFixed(1)}-{max.toFixed(1)} {unit}</span></span>
       </div>
-      <div style={{ width: "100%", height: 8, background: "#e2e8f0", borderRadius: 4, overflow: "hidden" }}>
-        <div style={{ width: `${pct}%`, height: "100%", background: color, transition: "width 0.3s ease" }}></div>
+      <div style={{ position: "relative", width: "100%", height: 10, background: "#f1f5f9", borderRadius: 5, overflow: "hidden" }}>
+        {/* Zona Target (area hijau semi-transparan) */}
+        <div style={{ position: "absolute", left: `${zoneLeft}%`, width: `${zoneWidth}%`, height: "100%", background: "rgba(34, 197, 94, 0.15)", borderLeft: "1.5px dashed #22c55e", borderRight: "1.5px dashed #22c55e" }}></div>
+        {/* Bar Progress Aktual */}
+        <div style={{ position: "relative", width: `${pct}%`, height: "100%", background: barColor, borderRadius: 5, transition: "width 0.3s ease, background 0.3s ease", zIndex: 1 }}></div>
       </div>
     </div>
   );
@@ -115,6 +136,7 @@ export default function SusunMenuMBG() {
 
   const [sasaran, setSasaran] = useState<string>("sd_4_6");
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [editingMenuId, setEditingMenuId] = useState<string | null>(null);
 
   // State Logistik
   const [jumlahPenerima, setJumlahPenerima] = useState<number>(100);
@@ -136,6 +158,12 @@ export default function SusunMenuMBG() {
   const [customBahan, setCustomBahan] = useState({
     nama: "", bdd: 100, energi: 0, protein: 0, lemak: 0, karbohidrat: 0
   });
+
+  // State Inline Edit
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editGram, setEditGram] = useState<number>(0);
+  const [editHarga, setEditHarga] = useState<number>(0);
+  const [editKategori, setEditKategori] = useState<string>("");
 
   const nextId = useRef<number>(0);
 
@@ -261,6 +289,53 @@ export default function SusunMenuMBG() {
     setSelectedTkpi(null);
   };
 
+  // --- INLINE EDIT HANDLERS ---
+  const startEdit = (item: MenuItem) => {
+    setEditingId(item.id);
+    setEditGram(item.gram);
+    setEditHarga(item.harga_kg);
+    setEditKategori(item.kategori);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+  };
+
+  const saveEdit = async (itemId: string) => {
+    setMenuItems(menuItems.map(m => {
+      if (m.id !== itemId) return m;
+
+      // Cari data TKPI asli berdasarkan kode bahan untuk kalkulasi ulang
+      const newGram = editGram;
+      const newHarga = editHarga;
+
+      // Hitung ulang faktor berdasarkan gramase lama -> baru
+      // Rasio perbandingan gramase baru vs lama
+      const ratio = m.gram > 0 ? newGram / m.gram : 1;
+      const kotor = m.gram > 0 ? m.berat_kotor * ratio : newGram;
+      const costBahan = (newGram / 1000) * newHarga;
+
+      return {
+        ...m,
+        gram: newGram,
+        berat_kotor: kotor,
+        harga_kg: newHarga,
+        cost: costBahan,
+        kategori: editKategori,
+        energi: m.energi * ratio,
+        protein: m.protein * ratio,
+        lemak: m.lemak * ratio,
+        karbo: m.karbo * ratio,
+        fe: m.fe * ratio,
+        vitA: m.vitA * ratio,
+        ca: m.ca * ratio,
+        zn: m.zn * ratio,
+        vitC: m.vitC * ratio,
+      };
+    }));
+    setEditingId(null);
+  };
+
   // --- RACIK OTOMATIS (VERSI CERDAS 2.0) ---
   const racikOtomatis = async () => {
     setIsRacikLoading(true);
@@ -269,20 +344,26 @@ export default function SusunMenuMBG() {
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview" });
 
+      // Gramase nasi otomatis berdasarkan target energi kelompok sasaran
+      const nasiGram = target.maxE <= 350 ? "75-100" : target.maxE <= 450 ? "100-125" : target.maxE <= 700 ? "125-150" : "150-200";
+
       const prompt = `Anda adalah ahli gizi MBG (Makan Bergizi Gratis).
-      Buatkan 1 set menu makan siang untuk kelompok sasaran: ${target.label}.
+      Buatkan 1 set menu makan ${target.waktu.toLowerCase()} untuk kelompok sasaran: ${target.label}.
       Target Energi: ${target.minE}-${target.maxE} kkal.
       Target Protein: ${target.minP}-${target.maxP} gram.
+      Target Lemak: ${target.minL}-${target.maxL} gram.
+      Target Karbohidrat: ${target.minK}-${target.maxK} gram.
 
-      PILIHKAN BAHAN BERIKUT (Harus di ikuti secara ketat):
-      1. Makanan Pokok (Nasi/Ubi/Kentang) - Gramasi sekitar 100-150g
+      PILIHKAN BAHAN BERIKUT (Harus diikuti secara ketat):
+      1. Makanan Pokok WAJIB: "Nasi putih" ATAU "Nasi beras merah" polos (BUKAN nasi goreng). Gramasi: ${nasiGram}g.
       2. Lauk Hewani (Ayam/Ikan/Telur/Daging) - Gramasi sekitar 40-75g (KECUALI bahan kering seperti Teri cukup 15g)
       3. Lauk Nabati (Tempe/Tahu) - Gramasi sekitar 25-50g
-      4. Sayuran (Bayam/Wortel/Labu) - Gramasi sekitar 75-100g
+      4. Sayuran (Bayam/Wortel/Labu Siam/Kangkung) - Gramasi sekitar 75-100g
       5. Buah (Pisang/Pepaya/Jeruk) - Gramasi sekitar 50-100g
 
       KEMBALIKAN HANYA JSON ARRAY berisi objek: [{"nama": "...", "gram": ..., "kategori": "..."}]
       Isi "kategori" dengan salah satu dari: "Makanan Pokok", "Lauk Hewani", "Lauk Nabati", "Sayuran", "Buah".
+      Item pertama HARUS "Nasi putih" atau "Nasi beras merah".
       Pastikan nama bahan sangat umum di Indonesia.
       DILARANG MEMBERIKAN TEKS LAIN.`;
 
@@ -399,24 +480,43 @@ export default function SusunMenuMBG() {
   const isPiringkuLengkap = komponenCount === 5;
   const statPiringku = isPiringkuLengkap ? "pass" : komponenCount >= 3 ? "warn" : "fail";
 
-  // --- PILAR 2: Kecukupan Energi & Protein (Kuantitatif Ketat) ---
-  const statE = (totals.e >= target.minE * 0.9 && totals.e <= target.maxE * 1.1) ? "pass" : "fail";
-  const statP = (totals.p >= target.minP * 0.95) ? "pass" : "fail";
+  // --- PILAR 2: Kecukupan Gizi Kuantitatif (Permenkes 28/2019 & Juknis BGN 2026) ---
+  const statE = (totals.e >= target.minE && totals.e <= target.maxE) ? "pass"
+    : (totals.e >= target.minE * 0.9 && totals.e <= target.maxE * 1.1) ? "warn" : "fail";
+  const statP = (totals.p >= target.minP) ? "pass"
+    : (totals.p >= target.minP * 0.9) ? "warn" : "fail";
 
-  // --- PILAR 3: Info Makro Tambahan (Indikatif — Tidak Menyebabkan Gagal) ---
-  const statL = (totals.l >= target.minL && totals.l <= target.maxL) ? "pass" : "warn";
-  const statK = (totals.k >= target.minK && totals.k <= target.maxK) ? "pass" : "warn";
+  // --- PILAR 3: Makro Tambahan (Lemak & Karbohidrat) ---
+  const statL = (totals.l >= target.minL && totals.l <= target.maxL) ? "pass"
+    : (totals.l >= target.minL * 0.85 && totals.l <= target.maxL * 1.15) ? "warn" : "fail";
+  const statK = (totals.k >= target.minK && totals.k <= target.maxK) ? "pass"
+    : (totals.k >= target.minK * 0.85 && totals.k <= target.maxK * 1.15) ? "warn" : "fail";
 
   // --- Kepatuhan Anggaran ---
   const statC = (finalCost <= target.budgetTarget) ? "pass" : "fail";
 
-  // --- Status Final: Lulus jika Pilar 1 + 2 + Biaya terpenuhi ---
-  const isMenuValid = isPiringkuLengkap && statE === "pass" && statP === "pass" && statC === "pass";
-  const statusFinal = isMenuValid
-    ? { label: "✅ Valid & Sesuai Pedoman", color: "#166534", bg: "#f0fdf4" }
-    : komponenCount >= 3 && statE === "pass"
-      ? { label: "⚠️ Hampir Sesuai — Perlu Revisi", color: "#d97706", bg: "#fffbeb" }
-      : { label: "❌ Belum Memenuhi Standar", color: "#991b1b", bg: "#fef2f2" };
+  // --- Aspek A: Kecukupan Gizi (Kuantitatif) ---
+  const giziAllPass = statE !== "fail" && statP !== "fail";
+  const giziPerfect = statE === "pass" && statP === "pass";
+
+  // --- Aspek B: Kelengkapan Komponen (Kualitatif) ---
+  // (statPiringku sudah dihitung di atas)
+
+  // --- Status Final Bertingkat (Gabungan 2 Aspek + Anggaran) ---
+  const isMenuValid = isPiringkuLengkap && giziPerfect && statC === "pass";
+  const statusFinal = (() => {
+    // Gagal total jika gizi jauh di bawah standar atau komponen sangat kurang
+    if (!giziAllPass || komponenCount <= 2) return { label: "❌ Belum Memenuhi Standar", color: "#991b1b", bg: "#fef2f2" };
+    if (statC === "fail") return { label: "❌ Anggaran Melebihi Batas", color: "#991b1b", bg: "#fef2f2" };
+    // Sempurna: gizi pass + komponen lengkap
+    if (isMenuValid) return { label: "✅ Valid & Sesuai Pedoman", color: "#166534", bg: "#f0fdf4" };
+    // Gizi tercukupi tapi komponen belum 5/5
+    if (giziPerfect && !isPiringkuLengkap) return { label: "⚠️ Gizi Tercukupi — Komponen Belum Lengkap", color: "#d97706", bg: "#fffbeb" };
+    // Komponen lengkap tapi gizi belum optimal
+    if (isPiringkuLengkap && !giziPerfect) return { label: "⚠️ Komponen Lengkap — Gizi Perlu Disesuaikan", color: "#d97706", bg: "#fffbeb" };
+    // Keduanya warning
+    return { label: "⚠️ Hampir Sesuai — Perlu Revisi", color: "#d97706", bg: "#fffbeb" };
+  })();
 
   const handleSave = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -429,9 +529,33 @@ export default function SusunMenuMBG() {
       data_menu: { 'Makan Siang': menuItems },
       status: isMenuValid ? 'approved' : 'draft'
     };
-    await supabase.from('rencana_menu').insert([payload]);
-    alert("Menu Berhasil Disimpan!");
+
+    if (editingMenuId) {
+      // Mode UPDATE: perbarui menu yang sudah ada
+      await supabase.from('rencana_menu').update(payload).eq('id', editingMenuId);
+      alert("Menu Berhasil Diperbarui!");
+      setEditingMenuId(null);
+    } else {
+      // Mode INSERT: simpan menu baru
+      await supabase.from('rencana_menu').insert([payload]);
+      alert("Menu Berhasil Disimpan!");
+    }
     setView("list");
+  };
+
+  // --- EDIT MENU TERSIMPAN ---
+  const handleEditMenu = (menu: SavedMenu) => {
+    // Cari key kelompok sasaran yang sesuai dengan label tersimpan
+    const matchKey = Object.entries(TARGET_GROUPS).find(
+      ([, val]) => val.label === menu.kelompok_sasaran
+    );
+    if (matchKey) setSasaran(matchKey[0]);
+
+    // Load data menu ke Composer
+    const items = menu.data_menu?.['Makan Siang'] || Object.values(menu.data_menu || {})[0] || [];
+    setMenuItems(items);
+    setEditingMenuId(menu.id);
+    setView("compose");
   };
 
   // ==========================================
@@ -472,8 +596,9 @@ export default function SusunMenuMBG() {
                           {m.status === 'approved' ? '✅ Valid' : '⚠️ Draft'}
                         </span>
                       </td>
-                      <td>
-                        <button onClick={() => handleDeleteMenu(m.id)} style={{ background: "#fee2e2", color: "#991b1b", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 12 }}>Hapus</button>
+                      <td style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <button onClick={() => handleEditMenu(m)} style={{ background: "#e0f2fe", color: "#0284c7", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 12 }}>✏️ Edit</button>
+                        <button onClick={() => handleDeleteMenu(m.id)} style={{ background: "#fee2e2", color: "#991b1b", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontWeight: 600, fontSize: 12 }}>🗑️ Hapus</button>
                       </td>
                     </tr>
                   ))}
@@ -495,10 +620,13 @@ export default function SusunMenuMBG() {
       {/* HEADER CONTROLS */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <button onClick={() => setView("list")} style={{ background: "transparent", border: "1px solid #cbd5e1", padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 600, color: "#475569" }}>
+          <button onClick={() => { setView("list"); setEditingMenuId(null); setMenuItems([]); }} style={{ background: "transparent", border: "1px solid #cbd5e1", padding: "8px 12px", borderRadius: 8, cursor: "pointer", fontWeight: 600, color: "#475569" }}>
             ⬅️ Kembali
           </button>
-          <h2 style={{ margin: 0, fontSize: 20, color: "#1e293b" }}>Peracik Menu (Standar Juknis 2026)</h2>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 20, color: "#1e293b" }}>{editingMenuId ? "✏️ Edit Menu" : "Peracik Menu"} (Standar Juknis 2026)</h2>
+            {editingMenuId && <div style={{ fontSize: 11, color: "#f59e0b", fontWeight: 600, marginTop: 2 }}>Mode Edit — perubahan akan memperbarui menu yang sudah tersimpan</div>}
+          </div>
         </div>
 
         <div style={{ display: "flex", gap: 12 }}>
@@ -524,10 +652,36 @@ export default function SusunMenuMBG() {
               backgroundSize: "12px auto"
             }}
           >
-            {Object.entries(TARGET_GROUPS).map(([key, val]) => (
-              <option key={key} value={key}>{val.label}</option>
-            ))}
+            <optgroup label="📦 PORSI KECIL — Rp 8.000 bahan baku">
+              <option value="bayi_pagi">👶 Bayi 6-11 bulan (Pagi/MPASI)</option>
+              <option value="balita_pagi">👶 Anak Balita 13-59 bln (Pagi)</option>
+              <option value="balita_siang">👶 Anak Balita (Siang)</option>
+              <option value="tk_paud">🎒 Siswa TK/PAUD/TK LB</option>
+              <option value="sd_1_3">🎒 Siswa SD/MI/SDLB Kelas 1-3</option>
+            </optgroup>
+            <optgroup label="📦 PORSI BESAR — Rp 10.000 bahan baku">
+              <option value="sd_4_6">🎒 Siswa SD/MI/SDLB Kelas 4-6</option>
+              <option value="smp">🎒 Siswa SMP/MTs/SMPLB</option>
+              <option value="sma">🎒 Siswa SMA/SMK/MA/SMALB</option>
+              <option value="pendidik">👩‍🏫 Pendidik / Tenaga Kependidikan</option>
+              <option value="ibu_hamil">🤰 Ibu Hamil</option>
+              <option value="ibu_menyusui">🤱 Ibu Menyusui</option>
+            </optgroup>
           </select>
+
+          {/* Badge Porsi Otomatis */}
+          <div style={{
+            padding: "8px 14px",
+            borderRadius: 8,
+            fontWeight: 700,
+            fontSize: 12,
+            whiteSpace: "nowrap",
+            background: target.budgetTarget === 8000 ? "#dbeafe" : "#ede9fe",
+            color: target.budgetTarget === 8000 ? "#1d4ed8" : "#6d28d9",
+            border: `1px solid ${target.budgetTarget === 8000 ? "#93c5fd" : "#c4b5fd"}`
+          }}>
+            {target.budgetTarget === 8000 ? "📦 Porsi Kecil — Rp 8.000" : "📦 Porsi Besar — Rp 10.000"}
+          </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f8fafc", padding: "4px 12px", borderRadius: 8, border: "1px solid #cbd5e1" }}>
             <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>👥 Anak:</span>
@@ -660,37 +814,69 @@ export default function SusunMenuMBG() {
 
           {/* PERBAIKAN 3: Skema Tabel yang Responsive & Scrollable agar lebih User Friendly */}
           <div style={{ width: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-            <table style={{ width: "100%", minWidth: 800, textAlign: "left", fontSize: 13, borderCollapse: "collapse" }}>
+            <table style={{ width: "100%", minWidth: 850, textAlign: "left", fontSize: 13, borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f8fafc", color: "#64748b" }}>
-                  <th style={{ padding: "12px 24px", whiteSpace: "nowrap" }}>BAHAN PANGAN</th>
-                  <th style={{ whiteSpace: "nowrap" }}>KATEGORI</th>
+                  <th style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>BAHAN PANGAN</th>
                   <th style={{ whiteSpace: "nowrap" }}>BERSIH (G)</th>
-                  <th style={{ color: "#2563eb", whiteSpace: "nowrap" }}>BELANJA (G)</th>
-                  <th style={{ whiteSpace: "nowrap" }}>ANGGARAN</th>
                   <th style={{ whiteSpace: "nowrap" }}>ENERGI</th>
                   <th style={{ whiteSpace: "nowrap" }}>PROTEIN</th>
-                  <th></th>
+                  <th style={{ whiteSpace: "nowrap" }}>LEMAK</th>
+                  <th style={{ whiteSpace: "nowrap" }}>KARBO</th>
+                  <th style={{ whiteSpace: "nowrap" }}>KATEGORI</th>
+                  <th style={{ whiteSpace: "nowrap" }}>ANGGARAN</th>
+                  <th style={{ whiteSpace: "nowrap", textAlign: "center" }}>AKSI</th>
                 </tr>
               </thead>
               <tbody>
-                {menuItems.map((m, i) => (
-                  <tr key={m.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
-                    <td style={{ padding: "12px 24px", fontWeight: 600, color: "#334155", minWidth: 180 }}>
-                      {m.nama}
-                    </td>
-                    <td>
-                      <span style={{ background: "#e2e8f0", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>{m.kategori}</span>
-                    </td>
-                    <td>{m.gram}</td>
-                    <td style={{ color: "#2563eb", fontWeight: 700 }}>{m.berat_kotor.toFixed(1)}</td>
-                    <td style={{ color: "#059669", fontWeight: 600, whiteSpace: "nowrap" }}>Rp {m.cost.toLocaleString("id-ID")}</td>
-                    <td>{m.energi.toFixed(1)}</td>
-                    <td>{m.protein.toFixed(1)}</td>
-                    <td style={{ paddingRight: 16 }}><button onClick={() => setMenuItems(menuItems.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 16 }}>×</button></td>
-                  </tr>
-                ))}
-                {menuItems.length === 0 && <tr><td colSpan={8} style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>Belum ada bahan yang ditambahkan ke dalam piring.</td></tr>}
+                {menuItems.map((m, i) => {
+                  const isEditing = editingId === m.id;
+                  return (
+                    <tr key={m.id} style={{ borderBottom: "1px solid #f1f5f9", background: isEditing ? "#fffbeb" : "transparent" }}>
+                      <td style={{ padding: "12px 16px", fontWeight: 600, color: "#334155", minWidth: 160 }}>
+                        {m.nama}
+                      </td>
+                      <td>
+                        {isEditing ? (
+                          <input type="number" value={editGram} onChange={e => setEditGram(Number(e.target.value))} style={{ width: 70, padding: "4px 6px", borderRadius: 4, border: "1px solid #f59e0b", outline: "none", fontWeight: 600 }} />
+                        ) : m.gram}
+                      </td>
+                      <td>{m.energi.toFixed(1)}</td>
+                      <td>{m.protein.toFixed(1)}</td>
+                      <td>{m.lemak.toFixed(1)}</td>
+                      <td>{m.karbo.toFixed(1)}</td>
+                      <td>
+                        {isEditing ? (
+                          <select value={editKategori} onChange={e => setEditKategori(e.target.value)} style={{ padding: "4px 6px", borderRadius: 4, border: "1px solid #f59e0b", outline: "none", fontSize: 11, fontWeight: 600 }}>
+                            <option value="Makanan Pokok">🍚 Makanan Pokok</option>
+                            <option value="Lauk Hewani">🍗 Lauk Hewani</option>
+                            <option value="Lauk Nabati">🧀 Lauk Nabati</option>
+                            <option value="Sayuran">🥬 Sayuran</option>
+                            <option value="Buah">🍉 Buah</option>
+                            <option value="Lainnya">🧂 Bumbu/Lainnya</option>
+                          </select>
+                        ) : (
+                          <span style={{ background: "#e2e8f0", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>{m.kategori}</span>
+                        )}
+                      </td>
+                      <td style={{ color: "#059669", fontWeight: 600, whiteSpace: "nowrap" }}>Rp {m.cost.toLocaleString("id-ID")}</td>
+                      <td style={{ paddingRight: 12, textAlign: "center", whiteSpace: "nowrap" }}>
+                        {isEditing ? (
+                          <>
+                            <button onClick={() => saveEdit(m.id)} style={{ background: "#10b981", color: "#fff", border: "none", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 700, marginRight: 4 }}>✅</button>
+                            <button onClick={cancelEdit} style={{ background: "#e2e8f0", color: "#475569", border: "none", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>✖</button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => startEdit(m)} style={{ background: "#e0f2fe", color: "#0284c7", border: "none", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 700, marginRight: 4 }}>✏️</button>
+                            <button onClick={() => setMenuItems(menuItems.filter((_, idx) => idx !== i))} style={{ background: "#fee2e2", color: "#ef4444", border: "none", borderRadius: 4, padding: "4px 8px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🗑️</button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {menuItems.length === 0 && <tr><td colSpan={9} style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>Belum ada bahan yang ditambahkan ke dalam piring.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -705,8 +891,8 @@ export default function SusunMenuMBG() {
             </div>
 
             <div style={{ display: "flex", gap: 12, width: "100%" }}>
-              <button onClick={handleSave} disabled={menuItems.length === 0 || isRacikLoading} style={{ flex: 1, padding: "12px", background: "#0f172a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: menuItems.length === 0 ? "not-allowed" : "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
-                💾 Simpan Menu
+              <button onClick={handleSave} disabled={menuItems.length === 0 || isRacikLoading} style={{ flex: 1, padding: "12px", background: editingMenuId ? "#d97706" : "#0f172a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: menuItems.length === 0 ? "not-allowed" : "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+                {editingMenuId ? "📝 Perbarui Menu" : "💾 Simpan Menu"}
               </button>
               <button onClick={() => setMenuItems([])} disabled={isRacikLoading} style={{ flex: 1, padding: "12px", background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: isRacikLoading ? "not-allowed" : "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
                 🗑️ Kosongkan Piring
@@ -750,18 +936,17 @@ export default function SusunMenuMBG() {
               </div>
             </div>
 
-            {/* PILAR 2: ENERGI & PROTEIN */}
+            {/* PILAR 2: KECUKUPAN GIZI KUANTITATIF */}
             <div style={{ borderBottom: "1px solid #e2e8f0", paddingBottom: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 12 }}>2. Kecukupan Energi & Protein</div>
-              <ProgressBar label="Energi (Toleransi ±10%)" current={totals.e} min={target.minE * 0.9} max={target.maxE * 1.1} unit="kkal" stat={statE} />
-              <ProgressBar label="Protein (Min. 95% target)" current={totals.p} min={target.minP * 0.95} max={target.maxP} unit="g" stat={statP} />
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#334155", marginBottom: 12 }}>2. Kecukupan Gizi (Permenkes 28/2019)</div>
+              <ProgressBar label="Energi" current={totals.e} min={target.minE} max={target.maxE} unit="kkal" stat={statE} />
+              <ProgressBar label="Protein" current={totals.p} min={target.minP} max={target.maxP} unit="g" stat={statP} />
             </div>
 
-            {/* PILAR 3: INFO MAKRO TAMBAHAN */}
+            {/* PILAR 3: LEMAK & KARBOHIDRAT */}
             <div style={{ borderBottom: "1px solid #e2e8f0", paddingBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>3. Info Makro Tambahan</span>
-                <span style={{ background: "#e0f2fe", color: "#0284c7", padding: "4px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700 }}>ℹ️ Indikatif</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>3. Lemak & Karbohidrat</span>
               </div>
               <ProgressBar label="Lemak" current={totals.l} min={target.minL} max={target.maxL} unit="g" stat={statL} />
               <ProgressBar label="Karbohidrat" current={totals.k} min={target.minK} max={target.maxK} unit="g" stat={statK} />

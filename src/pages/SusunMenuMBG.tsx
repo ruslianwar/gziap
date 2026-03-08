@@ -1,7 +1,8 @@
 // File: src/pages/SusunMenuMBG.tsx
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "../config/supabaseClient";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 
 // --- TYPESCRIPT INTERFACES ---
 interface MenuItem {
@@ -132,7 +133,6 @@ export default function SusunMenuMBG() {
   const [view, setView] = useState<"list" | "compose">("list");
   const [savedMenus, setSavedMenus] = useState<SavedMenu[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isRacikLoading, setIsRacikLoading] = useState(false);
 
   const [sasaran, setSasaran] = useState<string>("sd_4_6");
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -336,124 +336,138 @@ export default function SusunMenuMBG() {
     setEditingId(null);
   };
 
-  // --- RACIK OTOMATIS (VERSI CERDAS 2.0) ---
-  const racikOtomatis = async () => {
-    setIsRacikLoading(true);
-    try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite-preview" });
 
-      // Gramase nasi otomatis berdasarkan target energi kelompok sasaran
-      const nasiGram = target.maxE <= 350 ? "75-100" : target.maxE <= 450 ? "100-125" : target.maxE <= 700 ? "125-150" : "150-200";
-
-      const prompt = `Anda adalah ahli gizi MBG (Makan Bergizi Gratis).
-      Buatkan 1 set menu makan ${target.waktu.toLowerCase()} untuk kelompok sasaran: ${target.label}.
-      Target Energi: ${target.minE}-${target.maxE} kkal.
-      Target Protein: ${target.minP}-${target.maxP} gram.
-      Target Lemak: ${target.minL}-${target.maxL} gram.
-      Target Karbohidrat: ${target.minK}-${target.maxK} gram.
-
-      PILIHKAN BAHAN BERIKUT (Harus diikuti secara ketat):
-      1. Makanan Pokok WAJIB: "Nasi putih" ATAU "Nasi beras merah" polos (BUKAN nasi goreng). Gramasi: ${nasiGram}g.
-      2. Lauk Hewani (Ayam/Ikan/Telur/Daging) - Gramasi sekitar 40-75g (KECUALI bahan kering seperti Teri cukup 15g)
-      3. Lauk Nabati (Tempe/Tahu) - Gramasi sekitar 25-50g
-      4. Sayuran (Bayam/Wortel/Labu Siam/Kangkung) - Gramasi sekitar 75-100g
-      5. Buah (Pisang/Pepaya/Jeruk) - Gramasi sekitar 50-100g
-
-      KEMBALIKAN HANYA JSON ARRAY berisi objek: [{"nama": "...", "gram": ..., "kategori": "..."}]
-      Isi "kategori" dengan salah satu dari: "Makanan Pokok", "Lauk Hewani", "Lauk Nabati", "Sayuran", "Buah".
-      Item pertama HARUS "Nasi putih" atau "Nasi beras merah".
-      Pastikan nama bahan sangat umum di Indonesia.
-      DILARANG MEMBERIKAN TEKS LAIN.`;
-
-      const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
-      const jsonStr = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-      const aiRecommendations = JSON.parse(jsonStr);
-
-      const newMenu: MenuItem[] = [];
-
-      for (const rec of aiRecommendations) {
-        const { data } = await supabase
-          .from("data_tkpi")
-          .select("*")
-          .ilike("nama", `%${rec.nama.split(" ")[0]}%`)
-          .limit(1);
-
-        if (data && data.length > 0) {
-          const item = data[0];
-          const gram = rec.gram;
-          const harga_kg = 25000;
-
-          const bdd = parseGizi(item.bdd) || 100;
-          const factor = (gram / 100) * (bdd / 100);
-          const kotor = gram / (bdd / 100);
-
-          newMenu.push({
-            id: item.kode + "-" + (nextId.current++),
-            kode: item.kode,
-            nama: item.nama,
-            kategori: rec.kategori || "Lainnya",
-            sumber_data: item.sumber || "TKPI 2020",
-            gram: gram,
-            berat_kotor: kotor,
-            harga_kg: harga_kg,
-            cost: (gram / 1000) * harga_kg,
-            energi: parseGizi(item.energi) * factor,
-            protein: parseGizi(item.protein) * factor,
-            lemak: parseGizi(item.lemak) * factor,
-            karbo: parseGizi(item.karbohidrat) * factor,
-            fe: parseGizi(item.besi) * factor,
-            vitA: parseGizi(item.retinol || item.karoten_total) * factor,
-            ca: parseGizi(item.kalsium) * factor,
-            zn: parseGizi(item.seng) * factor,
-            vitC: parseGizi(item.vitamin_c) * factor,
-          });
-        }
-      }
-      setMenuItems(newMenu);
-    } catch (error) {
-      console.error("AI Error:", error);
-      alert("Gagal meracik. Coba lagi.");
-    } finally {
-      setIsRacikLoading(false);
-    }
-  };
 
   // --- EKSPOR CSV ---
-  const handleExportCSV = () => {
+  const handleExportExcel = async () => {
     if (menuItems.length === 0) {
       alert("Tidak ada data untuk diekspor.");
       return;
     }
 
-    const headers = ["Kode", "Kategori", "Nama Bahan", "Sumber Data", "Berat Bersih (g)", "Berat Kotor (g)", "Harga/Kg (Rp)", "Cost Bahan (Rp)", "Energi (kkal)", "Protein (g)", "Lemak (g)", "Karbohidrat (g)"];
-    const rows = menuItems.map(m => [
-      m.kode,
-      `"${m.kategori}"`,
-      `"${m.nama}"`,
-      m.sumber_data || "TKPI 2020",
-      m.gram,
-      m.berat_kotor.toFixed(1),
-      m.harga_kg,
-      m.cost.toFixed(2),
-      m.energi.toFixed(2),
-      m.protein.toFixed(2),
-      m.lemak.toFixed(2),
-      m.karbo.toFixed(2)
+    const targetData = TARGET_GROUPS[sasaran];
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Laporan Menu MBG");
+
+    // --- Judul & Kop Laporan ---
+    sheet.mergeCells("A1:K1");
+    sheet.getCell("A1").value = "LAPORAN PENYUSUNAN MENU MAKANAN BERGIZI GRATIS (MBG)";
+    sheet.getCell("A1").font = { bold: true, size: 14 };
+    sheet.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+
+    sheet.mergeCells("A2:K2");
+    sheet.getCell("A2").value = `Kelompok Sasaran: ${targetData.label}`;
+    sheet.getCell("A2").font = { bold: true, size: 12 };
+    sheet.getCell("A2").alignment = { horizontal: "center", vertical: "middle" };
+
+    sheet.mergeCells("A3:K3");
+    sheet.getCell("A3").value = `Waktu Makan: ${targetData.waktu} | Target Anggaran: Rp ${targetData.budgetTarget.toLocaleString("id-ID")}/porsi`;
+    sheet.getCell("A3").font = { italic: true, size: 11, color: { argb: "FF475569" } };
+    sheet.getCell("A3").alignment = { horizontal: "center", vertical: "middle" };
+
+    // Space
+    sheet.addRow([]);
+
+    // --- Header Tabel Rincian Bahan ---
+    const headerRow = sheet.addRow([
+      "No", "Kode", "Kategori (Isi Piringku)", "Nama Bahan", "Berat Bersih (g)", "Berat Kotor (g)", "Harga/Kg (Rp)", "Cost Bahan (Rp)", "Energi (kkal)", "Protein (g)", "Lemak (g)", "Karbo (g)"
     ]);
 
-    const totalRow = ["", "", "TOTAL", "", "", "", "", totals.c.toFixed(2), totals.e.toFixed(2), totals.p.toFixed(2), totals.l.toFixed(2), totals.k.toFixed(2)];
-    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n") + "\n" + totalRow.join(",");
+    headerRow.eachCell((cell) => {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
+      cell.font = { bold: true, size: 11 };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+    });
 
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `Laporan_Menu_MBG_${target.label.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // --- Isi Data ---
+    menuItems.forEach((m, index) => {
+      const row = sheet.addRow([
+        index + 1,
+        m.kode,
+        m.kategori,
+        m.nama,
+        m.gram,
+        m.berat_kotor.toFixed(1),
+        m.harga_kg,
+        m.cost.toFixed(2),
+        m.energi.toFixed(1),
+        m.protein.toFixed(1),
+        m.lemak.toFixed(1),
+        m.karbo.toFixed(1)
+      ]);
+      row.eachCell((cell) => {
+        cell.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+      });
+      // Formatting numbers
+      row.getCell(7).numFmt = '#,##0'; // Harga/Kg
+      row.getCell(8).numFmt = '#,##0.00'; // Cost
+      row.getCell(9).numFmt = '0.0'; // Gizi
+      row.getCell(10).numFmt = '0.0';
+      row.getCell(11).numFmt = '0.0';
+      row.getCell(12).numFmt = '0.0';
+    });
+
+    // --- Hitung Total ---
+    const totals = menuItems.reduce((acc, m) => ({
+      e: acc.e + m.energi, p: acc.p + m.protein, l: acc.l + m.lemak, k: acc.k + m.karbo, c: acc.c + m.cost
+    }), { e: 0, p: 0, l: 0, k: 0, c: 0 });
+
+    const finalAmount = totals.c * 1.1; // + 10% bumbu & margin
+
+    // --- Baris Total Cost Bahan ---
+    const totalRow = sheet.addRow([
+      "", "", "", "TOTAL BIAYA BAHAN", "", "", "", totals.c.toFixed(2), totals.e.toFixed(1), totals.p.toFixed(1), totals.l.toFixed(1), totals.k.toFixed(1)
+    ]);
+    totalRow.eachCell((cell) => {
+      cell.font = { bold: true };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+      cell.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+    });
+
+    // --- Baris Target AKG ---
+    const targetRow = sheet.addRow([
+      "", "", "", "TARGET JUKNIS BGN / AKG", "", "", "", "", `${targetData.minE}-${targetData.maxE}`, `> ${targetData.minP}`, `${targetData.minL}-${targetData.maxL}`, `${targetData.minK}-${targetData.maxK}`
+    ]);
+    targetRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FF0284C7" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0F2FE" } };
+      cell.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+      cell.alignment = { horizontal: "center" };
+    });
+
+    // Space
+    sheet.addRow([]);
+
+    // --- Ringkasan Anggaran Tambahan ---
+    sheet.addRow(["", "RINGKASAN ANGGARAN", "", ""]).font = { bold: true };
+    sheet.addRow(["", "Total Biaya Bahan Baku:", "", `Rp ${totals.c.toLocaleString("id-ID", { minimumFractionDigits: 2 })}`]);
+    sheet.addRow(["", "Margin Pengolahan / Bumbu (10%):", "", `Rp ${(totals.c * 0.1).toLocaleString("id-ID", { minimumFractionDigits: 2 })}`]);
+    const finalBudgetRow = sheet.addRow(["", "Estimasi Total Harga Per Porsi:", "", `Rp ${finalAmount.toLocaleString("id-ID", { minimumFractionDigits: 2 })}`]);
+    finalBudgetRow.font = { bold: true, color: { argb: finalAmount <= targetData.budgetTarget ? "FF16A34A" : "FFDC2626" } };
+    sheet.addRow(["", "Budget Maksimal Juknis BGN:", "", `Rp ${targetData.budgetTarget.toLocaleString("id-ID")}`]).font = { italic: true };
+
+    // --- Atur Lebar Kolom Murni ---
+    sheet.columns = [
+      { width: 5 },   // No
+      { width: 10 },  // Kode
+      { width: 25 },  // Kategori
+      { width: 35 },  // Nama Bahan
+      { width: 15 },  // Berat Bersih
+      { width: 15 },  // Berat Kotor
+      { width: 15 },  // Harga/Kg
+      { width: 18 },  // Cost
+      { width: 15 },  // Energi
+      { width: 15 },  // Protein
+      { width: 15 },  // Lemak
+      { width: 15 }   // Karbo
+    ];
+
+    // --- Generate dan Download File ---
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const filename = `Laporan_Menu_MBG_${targetData.label.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.xlsx`;
+    saveAs(blob, filename);
   };
 
   // ==========================================
@@ -684,7 +698,7 @@ export default function SusunMenuMBG() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#f8fafc", padding: "4px 12px", borderRadius: 8, border: "1px solid #cbd5e1" }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>👥 Anak:</span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>👥 Porsi:</span>
             <input type="number" value={jumlahPenerima} onChange={e => setJumlahPenerima(Number(e.target.value))} style={{ width: 60, padding: "4px 8px", border: "1px solid #cbd5e1", borderRadius: 4, outline: "none", fontWeight: 600 }} />
           </div>
 
@@ -883,25 +897,25 @@ export default function SusunMenuMBG() {
 
           {/* INFO & ACTION BUTTONS */}
           <div style={{ background: "#f8fafc", borderTop: "1px solid #e2e8f0", padding: "16px 24px" }}>
-            <div style={{ fontSize: 12, color: "#0284c7", background: "#e0f2fe", padding: "8px 12px", borderRadius: 6, marginBottom: 16, display: "flex", alignItems: "flex-start", gap: 8 }}>
-              <span>💡</span>
+            <div style={{ fontSize: 12, color: "#94a3b8", background: "#f1f5f9", padding: "8px 12px", borderRadius: 6, marginBottom: 16, display: "flex", alignItems: "flex-start", gap: 8 }}>
+              <span>⚠️</span>
               <div>
-                <b>Informasi Asisten Cerdas:</b> Fungsi <i>Racik Otomatis</i> kini ditenagai oleh <b>Google Gemini AI</b> untuk merekomendasikan variasi menu yang bervariasi setiap kali ditekan, dan akan otomatis divalidasi oleh sistem sesuai Standar Mutlak Permenkes 28/2019.
+                <b>Informasi Asisten Cerdas:</b> Fitur <i>Racik Otomatis (AI)</i> saat ini dinonaktifkan sementara karena limitasi kuota API gratis. Fitur ini akan aktif kembali setelah upgrade ke versi Premium.
               </div>
             </div>
 
             <div style={{ display: "flex", gap: 12, width: "100%" }}>
-              <button onClick={handleSave} disabled={menuItems.length === 0 || isRacikLoading} style={{ flex: 1, padding: "12px", background: editingMenuId ? "#d97706" : "#0f172a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: menuItems.length === 0 ? "not-allowed" : "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+              <button onClick={handleSave} disabled={menuItems.length === 0} style={{ flex: 1, padding: "12px", background: editingMenuId ? "#d97706" : "#0f172a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: menuItems.length === 0 ? "not-allowed" : "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
                 {editingMenuId ? "📝 Perbarui Menu" : "💾 Simpan Menu"}
               </button>
-              <button onClick={() => setMenuItems([])} disabled={isRacikLoading} style={{ flex: 1, padding: "12px", background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: isRacikLoading ? "not-allowed" : "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+              <button onClick={() => setMenuItems([])} style={{ flex: 1, padding: "12px", background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
                 🗑️ Kosongkan Piring
               </button>
-              <button onClick={handleExportCSV} disabled={menuItems.length === 0 || isRacikLoading} style={{ flex: 1, padding: "12px", background: "#10b981", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: menuItems.length === 0 ? "not-allowed" : "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
-                📄 Ekspor CSV
+              <button onClick={handleExportExcel} disabled={menuItems.length === 0} style={{ flex: 1, padding: "12px", background: "#10b981", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: menuItems.length === 0 ? "not-allowed" : "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+                📊 Ekspor Laporan Excel
               </button>
-              <button onClick={racikOtomatis} disabled={isRacikLoading} style={{ flex: 1.5, padding: "12px", background: "#3b82f6", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: isRacikLoading ? "wait" : "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)", opacity: isRacikLoading ? 0.7 : 1 }}>
-                {isRacikLoading ? "⏳ Sedang Meracik Menu..." : "✨ Racik Otomatis (AI)"}
+              <button disabled style={{ flex: 1.5, padding: "12px", background: "#e2e8f0", color: "#94a3b8", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: "not-allowed" }}>
+                🔒 Racik Otomatis (Upgrade Required)
               </button>
             </div>
           </div>

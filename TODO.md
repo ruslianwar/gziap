@@ -17,10 +17,10 @@
 - [x] Fix floating point panjang di Progress Bar
 - [x] Racik Otomatis: prioritas Nasi Putih/Beras Merah, gramase dinamis per kelompok
 - [x] Perbaikan Progress Bar → Range Indicator (warna semantik: biru/hijau/kuning/merah + zona target visual)
-- [x] Fitur Edit menu tersimpan (load kembali ke Composer, update bukan insert baru)
-- [x] Membuat SQL RLS policies untuk isolasi data per user (file: `supabase_rls_policies.sql`)
 - [x] Perbaikan data bayi_siang → bayi_pagi (AKG 20-25%, waktu Pagi)
 - [x] Dropdown kelompok sasaran → optgroup Porsi Kecil/Besar + badge otomatis
+- [x] Menonaktifkan sementara fitur Racik Otomatis (menunggu upgrade API Gemini)
+- [x] Mengubah Ekspor CSV mentah menjadi Laporan Excel otomatis (dengan styling Kop Surat, Analisis Gizi, dan Anggaran)
 - [ ] Jalankan SQL policies di Supabase SQL Editor
 - [ ] Push perubahan terbaru ke GitHub dan verifikasi Cloudflare Pages
 - [ ] Test login dan halaman SusunMenuMBG secara end-to-end setelah deploy

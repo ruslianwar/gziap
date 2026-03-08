@@ -1,12 +1,12 @@
 // File: src/pages/CycleMenuPage.tsx
 import { useState, useEffect } from "react";
-import { Modal } from "../components/Modal";
 import { supabase } from "../config/supabaseClient";
+import ExcelJS from "exceljs";
+import { saveAs } from "file-saver";
 
 export default function CycleMenuPage() {
   const HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"];
   const [week, setWeek] = useState(1);
-  const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // State menu menggunakan struktur asli prototipe Anda
@@ -15,19 +15,6 @@ export default function CycleMenuPage() {
     2: [],
     3: [],
     4: [],
-  });
-
-  // State untuk form tambah manual (Modal)
-  const [newMenu, setNewMenu] = useState({
-    hari: "Senin",
-    nama: "",
-    lauk: "",
-    buah: "",
-    kal: 0,
-    protein: 0,
-    karbo: 0,
-    lemak: 0,
-    serat: 0,
   });
 
   const fetchCycleMenus = async () => {
@@ -98,7 +85,7 @@ export default function CycleMenuPage() {
           const laukText =
             laukArr.length > 0
               ? laukArr.slice(0, 4).join(", ") +
-                (laukArr.length > 4 ? ", dll" : "")
+              (laukArr.length > 4 ? ", dll" : "")
               : "Lauk belum ditentukan";
 
           const buahText =
@@ -115,6 +102,8 @@ export default function CycleMenuPage() {
             karbo: Math.round(karbo),
             lemak: Math.round(lemak),
             serat: Math.round(serat),
+            kelompok_sasaran: item.kelompok_sasaran, // Tambahan untuk Kop
+            raw_data: item.data_menu // Menyimpan detail bahan mentah untuk Export
           });
         }
       });
@@ -152,18 +141,196 @@ export default function CycleMenuPage() {
     ? Math.round(cur.reduce((a, m) => a + m.kal, 0) / cur.length)
     : 0;
 
+  // --- FUNGSI EKSPOR SIKLUS MENU MINGGUAN ---
+  const handleExportSiklusExcel = async () => {
+    if (cur.length === 0) {
+      alert("Tidak ada data menu pada minggu ini untuk diekspor.");
+      return;
+    }
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet(`Siklus Menu Minggu ${week}`, {
+      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
+    });
+
+    // --- KOP SURAT ---
+    sheet.mergeCells("A1:K1");
+    sheet.getCell("A1").value = `LAPORAN SIKLUS MENU MAKAN BERGIZI GRATIS (MBG) — MINGGU KE-${week}`;
+    sheet.getCell("A1").font = { bold: true, size: 14 };
+    sheet.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+
+    sheet.mergeCells("A2:L2");
+    // Ambil semua kelomok sasaran yang unik dari menu minggu ini
+    const sasaranList = Array.from(new Set(cur.map((c: any) => c.kelompok_sasaran).filter(Boolean)));
+    const sasaranMode = sasaranList.length > 0 ? sasaranList.join(", ") : "Umum";
+    const porsiTag = avgKal >= 500 ? "Porsi Besar" : "Porsi Kecil";
+    sheet.getCell("A2").value = `Penerima Manfaat: ${sasaranMode} (${porsiTag})`;
+    sheet.getCell("A2").font = { bold: true, size: 12, italic: true, color: { argb: "FF475569" } };
+    sheet.getCell("A2").alignment = { horizontal: "center", vertical: "middle" };
+
+    sheet.addRow([]); // Space
+
+    // --- FUNGSI HELPER UNTUK MEMBANGUN TABEL PER HARI ---
+    const buildDailyTable = (menuHari: any) => {
+      // 1. Judul Hari
+      sheet.addRow([]);
+      const subHeaderRow = sheet.addRow([`HARI: ${menuHari.hari.toUpperCase()} — ${menuHari.nama}`]);
+      sheet.mergeCells(`A${subHeaderRow.number}:J${subHeaderRow.number}`);
+      subHeaderRow.getCell(1).font = { bold: true, size: 12, color: { argb: "FFFFFFFF" } };
+      subHeaderRow.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } }; // Biru dongker
+      subHeaderRow.getCell(1).alignment = { horizontal: "left", vertical: "middle" };
+
+      // 2. Header Kolom Rincian
+      const headerRow = sheet.addRow([
+        "No", "Nama Hidangan", "Berat Kotor (g)", "Berat Bersih (g)", "Energi (kkal)", "Protein (g)", "Lemak (g)", "Karbo (g)", "Harga/Kg (Rp)", "Cost Bahan (Rp)"
+      ]);
+      headerRow.eachCell((cell) => {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
+        cell.font = { bold: true, size: 11 };
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+        cell.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+      });
+
+      // 3. Ekstraksi Item Bahan dari raw_data
+      const rawMenu = menuHari.raw_data;
+      let items: any[] = [];
+      if (rawMenu) {
+        Object.values(rawMenu).forEach((mealArray: any) => {
+          if (Array.isArray(mealArray)) items = [...items, ...mealArray];
+        });
+      }
+
+      if (items.length === 0) {
+        const trRow = sheet.addRow(["", "Tidak ada rincian bahan makanan", "", "", "", "", "", "", "", ""]);
+        sheet.mergeCells(`B${trRow.number}:J${trRow.number}`);
+        trRow.font = { italic: true };
+        return;
+      }
+
+      // 4. Isi Data Tabel Hari Itu
+      let tE = 0, tP = 0, tL = 0, tK = 0, tCost = 0;
+
+      // State tracking untuk merge cells
+      let lastHidangan = "";
+      let mergeStartRow = -1;
+
+      items.forEach((m: any, idx: number) => {
+        const pTotal = m.protein || 0;
+
+        tE += m.energi || 0; tP += pTotal;
+        tL += m.lemak || 0; tK += m.karbo || 0; tCost += m.cost || 0;
+
+        let hidanganName = m.hidangan || m.kategori || "-";
+        if (!m.hidangan) {
+          if (m.kategori === "Makanan Pokok") hidanganName = "Nasi / Pengganti";
+          else if (m.kategori === "Sayuran") hidanganName = "Sayur";
+        }
+
+        const row = sheet.addRow([
+          idx + 1,
+          hidanganName,
+          Number(m.berat_kotor || 0).toFixed(1),
+          Number(m.gram || 0),
+          Number(m.energi || 0).toFixed(1),
+          Number(pTotal).toFixed(1),
+          Number(m.lemak || 0).toFixed(1),
+          Number(m.karbo || 0).toFixed(1),
+          Number(m.harga_kg || 0),
+          Number(m.cost || 0).toFixed(2)
+        ]);
+
+        const currentRowNum = row.number;
+
+        // Logika Merge Cell Header (Nama Hidangan ada di Kolom 2 / B)
+        if (hidanganName !== lastHidangan) {
+          // Jika berganti nilai, merge yang sebelumnya jika > 1 baris
+          if (mergeStartRow !== -1 && (currentRowNum - 1) > mergeStartRow) {
+            sheet.mergeCells(`B${mergeStartRow}:B${currentRowNum - 1}`);
+          }
+          // Set awal blok baru
+          mergeStartRow = currentRowNum;
+          lastHidangan = hidanganName;
+        }
+
+        row.eachCell((cell) => {
+          cell.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+          cell.alignment = { vertical: "middle" };
+        });
+
+        row.getCell(3).numFmt = '0.0';  // B.Kotor
+        row.getCell(4).numFmt = '#,##0'; // B.Bersih
+        row.getCell(5).numFmt = '0.0';  // E
+        row.getCell(6).numFmt = '0.0';  // P
+        row.getCell(7).numFmt = '0.0';  // L
+        row.getCell(8).numFmt = '0.0'; // K
+        row.getCell(9).numFmt = '#,##0'; // Harga Kg
+        row.getCell(10).numFmt = '#,##0.00'; // Cost
+      });
+
+      // Merge untuk blok terakhir (jika ada) di akhir loop
+      if (mergeStartRow !== -1 && (sheet.rowCount) > mergeStartRow) {
+        sheet.mergeCells(`B${mergeStartRow}:B${sheet.rowCount}`);
+      }
+
+      // 5. Total Harian
+      const finalCostHarian = tCost * 1.1; // margin+bumbu
+      const totalRow = sheet.addRow([
+        "", "TOTAL BIAYA BAHAN PER PORSI", "", "", tE.toFixed(1), tP.toFixed(1), tL.toFixed(1), tK.toFixed(1), "", tCost.toFixed(2)
+      ]);
+      sheet.mergeCells(`B${totalRow.number}:D${totalRow.number}`);
+      totalRow.eachCell((cell) => {
+        cell.font = { bold: true };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
+        cell.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+      });
+      // Baris Rangkuman Anggaran + Bumbu 10%
+      const estimasiRow = sheet.addRow([
+        "", "ESTIMASI TOTAL HARGA (+10% Bumbu & Margin):", "", "", "", "", "", "", "", `Rp ${finalCostHarian.toLocaleString("id-ID", { minimumFractionDigits: 2 })}`
+      ]);
+      sheet.mergeCells(`B${estimasiRow.number}:I${estimasiRow.number}`);
+      estimasiRow.getCell(2).font = { bold: true, italic: true };
+      estimasiRow.getCell(10).font = { bold: true, color: { argb: "FF047857" } };
+    };
+
+    // --- LOOP PEMBUATAN TABEL HARI (SENIN - JUMAT) ---
+    // Karena 'cur' mungkin tidak urut hari, kita sort sesuai array HARI
+    const sortedCur = [...cur].sort((a, b) => HARI.indexOf(a.hari) - HARI.indexOf(b.hari));
+    sortedCur.forEach((harianMenu) => {
+      buildDailyTable(harianMenu);
+    });
+
+    // --- Atur Lebar Kolom Murni (Landscape Friendly) ---
+    sheet.columns = [
+      { width: 5 },   // No
+      { width: 35 },  // Kategori
+      { width: 14 },  // B.Kotor
+      { width: 14 },  // B.Bersih
+      { width: 14 },  // E
+      { width: 14 },  // P
+      { width: 14 },  // L
+      { width: 14 },  // K
+      { width: 22 },  // Harga/Kg
+      { width: 22 }   // Cost
+    ];
+
+    // --- GENERATE FILE EXCEL ---
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const filename = `Laporan_Siklus_Menu_M${week}_MBG.xlsx`;
+    saveAs(blob, filename);
+  };
+
   return (
     <div>
       <div className="topbar">
         <div className="tb-bread">
-          SiGizi MBG / <span>Cycle Menu</span>
+          SiGizi MBG / <span>Siklus Menu</span>
         </div>
       </div>
       <div className="ph">
-        <div className="ph-title">Cycle Menu</div>
+        <div className="ph-title">Siklus Menu</div>
         <div className="ph-sub">
-          Rencana menu harian MBG dengan validasi AKG otomatis (Terhubung
-          Database)
+          Rencana menu harian MBG dengan validasi AKG otomatis (Terhubung Database)
         </div>
       </div>
 
@@ -197,8 +364,18 @@ export default function CycleMenuPage() {
             🔄 Segarkan Data
           </button>
           <button
+            className="btn btn-sm"
+            style={{ marginRight: 8, background: "#10b981", color: "white", border: "1px solid #059669" }}
+            title="Ekspor Laporan Format Landscape Senin-Jumat"
+            onClick={handleExportSiklusExcel}
+            disabled={cur.length === 0}
+          >
+            📊 Ekspor Siklus Menu
+          </button>
+          <button
             className="btn btn-primary btn-sm"
-            onClick={() => setModalOpen(true)}
+            onClick={() => alert("Gunakan Halaman 'Susun Menu MBG' dari menu Sidebar untuk mengkreasikan dan menyimpan menu baru, lalu Menu tersebut akan otomatis tersimpan dalam siklus ini.")}
+            title="Tambah menu melalui kalkulator FNCA"
           >
             ＋ Tambah Menu
           </button>
@@ -274,67 +451,30 @@ export default function CycleMenuPage() {
 
               <div
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 4,
-                  padding: "2px 8px",
-                  background: "var(--g6)",
-                  color: "var(--g1)",
-                  borderRadius: 20,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  marginTop: 8,
-                }}
-              >
-                🔥 {m.kal} kkal
-              </div>
-              <div
-                style={{
                   display: "flex",
-                  gap: 4,
-                  flexWrap: "wrap",
-                  marginTop: 6,
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginTop: 12,
                 }}
               >
-                <span
-                  style={{
-                    padding: "2px 6px",
-                    borderRadius: 5,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    background: "#fef3c7",
-                    color: "#92400e",
-                  }}
-                >
-                  K {m.karbo}g
-                </span>
-                <span
-                  style={{
-                    padding: "2px 6px",
-                    borderRadius: 5,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    background: "#e0e7ff",
-                    color: "#3730a3",
-                  }}
-                >
-                  P {m.protein}g
-                </span>
-                <span
-                  style={{
-                    padding: "2px 6px",
-                    borderRadius: 5,
-                    fontSize: 10,
-                    fontWeight: 700,
-                    background: "#fce7f3",
-                    color: "#831843",
-                  }}
-                >
-                  L {m.lemak}g
-                </span>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <div style={{ fontWeight: 800, color: "var(--g3)", fontSize: 13 }}>
+                    {m.kal} kkal
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--txt3)", fontWeight: 600 }}>
+                    (P:{m.protein} L:{m.lemak} K:{m.karbo})
+                  </div>
+                </div>
               </div>
               <div style={{ display: "flex", gap: 4, marginTop: 12 }}>
-                <button className="btn-icon-sq" style={{ fontSize: 12 }}>
+                {/* Edit route switch if strictly necessary, but simple alert or setEdit mode is fine for now; 
+                    delete already wired to handleDelete */}
+                <button
+                  className="btn-icon-sq"
+                  style={{ fontSize: 12 }}
+                  onClick={() => alert("Gunakan halaman Susun Menu untuk memodifikasi menu ini.")}
+                  title="Edit Menu"
+                >
                   ✏️
                 </button>
                 <button
@@ -420,118 +560,6 @@ export default function CycleMenuPage() {
             </table>
           </div>
         </div>
-      )}
-
-      {/* Modal Tambah Menu (Dipertahankan 100% Sesuai Asli) */}
-      {modalOpen && (
-        <Modal
-          title="Tambah Menu"
-          sub="Data menu harian MBG"
-          onClose={() => setModalOpen(false)}
-          footer={
-            <>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setModalOpen(false)}
-              >
-                Batal
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  alert(
-                    "Gunakan FNCA Kalkulator untuk menambah menu riil ke Database.",
-                  );
-                  setModalOpen(false);
-                }}
-              >
-                Simpan Data
-              </button>
-            </>
-          }
-        >
-          <div>
-            <div className="fr">
-              <div className="fg">
-                <label className="fl">Hari</label>
-                <select
-                  className="fs"
-                  value={newMenu.hari}
-                  onChange={(e) =>
-                    setNewMenu({ ...newMenu, hari: e.target.value })
-                  }
-                >
-                  {HARI.map((h) => (
-                    <option key={h}>{h}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="fg">
-                <label className="fl">Nama Menu</label>
-                <input
-                  className="fi"
-                  placeholder="Nasi Ayam Bumbu Kuning"
-                  value={newMenu.nama}
-                  onChange={(e) =>
-                    setNewMenu({ ...newMenu, nama: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-            <div className="fg">
-              <label className="fl">Lauk & Sayur</label>
-              <input
-                className="fi"
-                placeholder="Ayam kuning, tempe goreng, bayam bening"
-                value={newMenu.lauk}
-                onChange={(e) =>
-                  setNewMenu({ ...newMenu, lauk: e.target.value })
-                }
-              />
-            </div>
-            <div className="fg">
-              <label className="fl">Buah</label>
-              <input
-                className="fi"
-                placeholder="Pepaya"
-                value={newMenu.buah}
-                onChange={(e) =>
-                  setNewMenu({ ...newMenu, buah: e.target.value })
-                }
-              />
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(5, 1fr)",
-                gap: 10,
-              }}
-            >
-              {[
-                { k: "kal", l: "Kalori" },
-                { k: "karbo", l: "Karbo" },
-                { k: "protein", l: "Protein" },
-                { k: "lemak", l: "Lemak" },
-                { k: "serat", l: "Serat" },
-              ].map((item) => (
-                <div key={item.k} className="fg">
-                  <label className="fl">{item.l}</label>
-                  <input
-                    className="fi"
-                    type="number"
-                    value={newMenu[item.k as keyof typeof newMenu]}
-                    onChange={(e) =>
-                      setNewMenu({
-                        ...newMenu,
-                        [item.k]: Number(e.target.value),
-                      })
-                    }
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        </Modal>
       )}
     </div>
   );

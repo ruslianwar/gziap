@@ -1,6 +1,20 @@
 // File: src/pages/TargetGiziPage.tsx
 import { AlertBox } from "../components/AlertBox";
-import { AKG_GROUPS } from "../utils/constants";
+
+// --- STANDAR BAKU MBG (BERDASARKAN TABEL 2 JUKNIS BGN 2026 & PERMENKES 28/2019) ---
+const TARGET_GROUPS: Record<string, any> = {
+  tk_paud: { label: "Siswa TK/PAUD/TK LB", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 280, maxE: 350, minP: 5.0, maxP: 6.3, minL: 10.0, maxL: 12.5, minK: 44.0, maxK: 55.0, budgetTarget: 8000 },
+  sd_1_3: { label: "Siswa SD/MI/SDLB Kelas 1-3", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 330, maxE: 413, minP: 8.0, maxP: 10.0, minL: 11.0, maxL: 13.8, minK: 50.0, maxK: 62.5, budgetTarget: 8000 },
+  sd_4_6: { label: "Siswa SD/MI/SDLB Kelas 4-6", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 585, maxE: 683, minP: 15.8, maxP: 18.4, minL: 19.5, maxL: 22.8, minK: 87.0, maxK: 101.5, budgetTarget: 10000 },
+  smp: { label: "Siswa SMP/MTs/SMPLB", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 668, maxE: 779, minP: 20.3, maxP: 23.6, minL: 22.5, maxL: 26.3, minK: 97.5, maxK: 113.8, budgetTarget: 10000 },
+  sma: { label: "Siswa SMA/SMK/MA/SMALB", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 713, maxE: 831, minP: 21.0, maxP: 24.5, minL: 22.5, maxL: 26.3, minK: 105.0, maxK: 122.5, budgetTarget: 10000 },
+  pendidik: { label: "Pendidik / Tenaga Kependidikan", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 713, maxE: 831, minP: 21.0, maxP: 24.5, minL: 22.5, maxL: 26.3, minK: 105.0, maxK: 122.5, budgetTarget: 10000 },
+  balita_siang: { label: "Anak Balita (Siang)", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 405, maxE: 473, minP: 6.0, maxP: 7.0, minL: 13.5, maxL: 15.8, minK: 64.5, maxK: 75.3, budgetTarget: 8000 },
+  balita_pagi: { label: "Anak Balita 13-59 bln (Pagi)", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 270, maxE: 338, minP: 4.0, maxP: 5.0, minL: 9.0, maxL: 11.3, minK: 43.0, maxK: 53.8, budgetTarget: 8000 },
+  bayi_pagi: { label: "Bayi 6-11 bulan (Pagi/MPASI)", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 160, maxE: 200, minP: 3.0, maxP: 3.8, minL: 7.0, maxL: 8.8, minK: 21.0, maxK: 26.3, budgetTarget: 8000 },
+  ibu_hamil: { label: "Ibu Hamil", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 753, maxE: 879, minP: 22.1, maxP: 25.8, minL: 20.2, maxL: 23.6, minK: 118.5, maxK: 138.3, budgetTarget: 10000 },
+  ibu_menyusui: { label: "Ibu Menyusui", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 782, maxE: 912, minP: 26.3, maxP: 30.6, minL: 20.2, maxL: 23.5, minK: 123.0, maxK: 143.5, budgetTarget: 10000 }
+};
 
 export default function TargetGiziPage() {
   return (
@@ -35,34 +49,28 @@ export default function TargetGiziPage() {
             <thead>
               <tr>
                 <th>Kelompok Sasaran</th>
-                <th>Energi (kkal)</th>
-                <th>Protein (g)</th>
-                <th>Lemak (g)</th>
-                <th>Karbo (g)</th>
-                <th>Serat (g)</th>
-                <th>Kalsium (mg)</th>
-                <th>Besi (mg)</th>
-                <th>Target Sarapan (25%)</th>
-                <th>Target Siang (35%)</th>
+                <th>Waktu & Persentase</th>
+                <th>Target Energi (kkal)</th>
+                <th>Target Protein (g)</th>
+                <th>Target Lemak (g)</th>
+                <th>Target Karbo (g)</th>
+                <th>Budget Asumsi</th>
               </tr>
             </thead>
             <tbody>
-              {Object.entries(AKG_GROUPS).map(([k, v]) => (
+              {Object.entries(TARGET_GROUPS).map(([k, v]) => (
                 <tr key={k}>
-                  <td style={{ fontWeight: 700 }}>{k}</td>
-                  <td>{v.energi}</td>
-                  <td>{v.protein}</td>
-                  <td>{v.lemak}</td>
-                  <td>{v.karbo}</td>
-                  <td>{v.serat}</td>
-                  <td>{v.kalsium}</td>
-                  <td>{v.besi}</td>
-                  <td style={{ color: "var(--g3)", fontWeight: 600 }}>
-                    {Math.round(v.energi * 0.25)} kkal
+                  <td style={{ fontWeight: 700 }}>{v.label}</td>
+                  <td>
+                    {v.waktu} ({v.akgMin}% - {v.akgMax}%)
                   </td>
-                  <td style={{ color: "var(--blue)", fontWeight: 600 }}>
-                    {Math.round(v.energi * 0.35)} kkal
+                  <td style={{ fontWeight: 600, color: "var(--g3)" }}>
+                    {v.minE} - {v.maxE}
                   </td>
+                  <td>{v.minP} - {v.maxP}</td>
+                  <td>{v.minL} - {v.maxL}</td>
+                  <td>{v.minK} - {v.maxK}</td>
+                  <td>Rp {v.budgetTarget.toLocaleString("id-ID")}</td>
                 </tr>
               ))}
             </tbody>

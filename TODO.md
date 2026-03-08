@@ -20,10 +20,10 @@
 - [x] Perbaikan data bayi_siang → bayi_pagi (AKG 20-25%, waktu Pagi)
 - [x] Dropdown kelompok sasaran → optgroup Porsi Kecil/Besar + badge otomatis
 - [x] Menonaktifkan sementara fitur Racik Otomatis (menunggu upgrade API Gemini)
-- [x] Mengubah Ekspor CSV mentah menjadi Laporan Excel otomatis (dengan styling Kop Surat, Analisis Gizi, dan Anggaran)
+- [x] Ekspor Laporan Excel Susun Menu yang dipercantik & pemisahan kolom Protein (Hewani/Nabati)
+- [x] Ekspor Laporan Excel Siklus Menu (Landscape, 5 Hari) di halaman Cycle Menu
 - [ ] Jalankan SQL policies di Supabase SQL Editor
 - [ ] Push perubahan terbaru ke GitHub dan verifikasi Cloudflare Pages
-- [ ] Test login dan halaman SusunMenuMBG secara end-to-end setelah deploy
 
 ## 💬 Log Percakapan Terakhir
 *(Bagian ini akan diisi oleh AI dengan rangkuman diskusi terakhir sebelum sesi berakhir/komputer direstart)*

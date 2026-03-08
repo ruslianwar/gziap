@@ -36,7 +36,7 @@ export default function MainLayout({
   //const isAdmin = user?.role === "admin";
   // Cek apakah user yang login adalah admin atau superadmin
   const isAdmin = user?.role === "superadmin" || user?.role === "admin";
-  
+
   // Daftar Menu Navigasi
   const menus = [
     {
@@ -48,7 +48,7 @@ export default function MainLayout({
       items: [
         { id: "fnca", icon: "🔬", label: "Susun Menu MBG" },
         { id: "rekap", icon: "🛒", label: "Rekap Belanja" }, // ✅ TAMBAHAN: Menu Rekap Belanja
-        { id: "cycle_menu", icon: "🥗", label: "Cycle Menu" },
+        { id: "cycle_menu", icon: "🥗", label: "Siklus Menu" },
         { id: "target_gizi", icon: "🎯", label: "Target & AKG" },
       ],
     },
@@ -111,8 +111,8 @@ export default function MainLayout({
             {user?.avatar || getAvatar(user?.nama)}
           </div>
           <div className="sb-user-info">
-            <div className="sb-user-name">
-              {(user?.nama || "Pengguna").split(",")[0]}
+            <div className="sb-user-name" style={{ fontSize: 13, wordBreak: "break-all" }}>
+              {user?.user_metadata?.full_name || user?.email || user?.nama || "Pengguna"}
             </div>
             <div className="sb-user-role">
               {ROLES[user?.role]?.label || "User"}

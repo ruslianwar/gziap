@@ -9,6 +9,7 @@ interface MenuItem {
   id: string;
   kode: string;
   nama: string;
+  hidangan?: string; // Nama Menu Jadi (cth: Ayam Goreng)
   kategori: string; // Komponen Isi Piringku
   sumber_data?: string;
   gram: number;
@@ -151,6 +152,7 @@ export default function SusunMenuMBG() {
   const [inputGram, setInputGram] = useState<number>(100);
   const [inputHarga, setInputHarga] = useState<number>(0);
   const [inputKategori, setInputKategori] = useState<string>("Makanan Pokok");
+  const [inputHidangan, setInputHidangan] = useState<string>("");
 
   // State Modal Bahan Kustom
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
@@ -164,6 +166,7 @@ export default function SusunMenuMBG() {
   const [editGram, setEditGram] = useState<number>(0);
   const [editHarga, setEditHarga] = useState<number>(0);
   const [editKategori, setEditKategori] = useState<string>("");
+  const [editHidangan, setEditHidangan] = useState<string>("");
 
   const nextId = useRef<number>(0);
 
@@ -264,10 +267,15 @@ export default function SusunMenuMBG() {
     const kotor = inputGram / (bdd / 100);
     const costBahan = (inputGram / 1000) * inputHarga;
 
+    let defaultHidangan = inputKategori;
+    if (defaultHidangan === "Makanan Pokok") defaultHidangan = "Nasi / Pengganti";
+    else if (defaultHidangan === "Sayuran") defaultHidangan = "Sayur";
+
     const newFood: MenuItem = {
       id: selectedTkpi.kode + "-" + (nextId.current++),
       kode: selectedTkpi.kode,
       nama: selectedTkpi.nama,
+      hidangan: inputHidangan.trim() === "" ? defaultHidangan : inputHidangan,
       kategori: inputKategori,
       sumber_data: selectedTkpi.sumber || "TKPI 2020",
       gram: inputGram,
@@ -295,6 +303,7 @@ export default function SusunMenuMBG() {
     setEditGram(item.gram);
     setEditHarga(item.harga_kg);
     setEditKategori(item.kategori);
+    setEditHidangan(item.hidangan || "");
   };
 
   const cancelEdit = () => {
@@ -322,6 +331,7 @@ export default function SusunMenuMBG() {
         harga_kg: newHarga,
         cost: costBahan,
         kategori: editKategori,
+        hidangan: editHidangan,
         energi: m.energi * ratio,
         protein: m.protein * ratio,
         lemak: m.lemak * ratio,
@@ -349,15 +359,16 @@ export default function SusunMenuMBG() {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Laporan Menu MBG");
 
-    // --- Judul & Kop Laporan ---
-    sheet.mergeCells("A1:K1");
-    sheet.getCell("A1").value = "LAPORAN PENYUSUNAN MENU MAKANAN BERGIZI GRATIS (MBG)";
+    // --- KOP SURAT ---
+    sheet.mergeCells("A1:J1");
+    sheet.getCell("A1").value = "LAPORAN PENYUSUNAN MENU MAKAN BERGIZI GRATIS (MBG)";
     sheet.getCell("A1").font = { bold: true, size: 14 };
     sheet.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
 
     sheet.mergeCells("A2:K2");
-    sheet.getCell("A2").value = `Kelompok Sasaran: ${targetData.label}`;
-    sheet.getCell("A2").font = { bold: true, size: 12 };
+    const porsiLabel = targetData.minE >= 500 ? "Porsi Besar" : "Porsi Kecil";
+    sheet.getCell("A2").value = `Kelompok Sasaran: ${targetData.label} (${porsiLabel})`;
+    sheet.getCell("A2").font = { bold: true, size: 12, italic: true, color: { argb: "FF475569" } };
     sheet.getCell("A2").alignment = { horizontal: "center", vertical: "middle" };
 
     sheet.mergeCells("A3:K3");
@@ -370,7 +381,7 @@ export default function SusunMenuMBG() {
 
     // --- Header Tabel Rincian Bahan ---
     const headerRow = sheet.addRow([
-      "No", "Kode", "Kategori (Isi Piringku)", "Nama Bahan", "Berat Bersih (g)", "Berat Kotor (g)", "Harga/Kg (Rp)", "Cost Bahan (Rp)", "Energi (kkal)", "Protein (g)", "Lemak (g)", "Karbo (g)"
+      "No", "Nama Hidangan", "Berat Bersih (g)", "Berat Kotor (g)", "Energi (kkal)", "Protein (g)", "Lemak (g)", "Karbo (g)", "Harga/Kg (Rp)", "Cost Bahan (Rp)"
     ]);
 
     headerRow.eachCell((cell) => {
@@ -381,32 +392,62 @@ export default function SusunMenuMBG() {
     });
 
     // --- Isi Data ---
+
+    // State tracking untuk merge cells
+    let lastHidangan = "";
+    let mergeStartRow = -1;
+
     menuItems.forEach((m, index) => {
+      // Prioritaskan nama hidangan kustom dari user, lalu fallback ke default kategori
+      let hidanganName = m.hidangan || m.kategori || "-";
+      if (!m.hidangan) {
+        if (m.kategori === "Makanan Pokok") hidanganName = "Nasi / Pengganti";
+        else if (m.kategori === "Sayuran") hidanganName = "Sayur";
+      }
+
       const row = sheet.addRow([
         index + 1,
-        m.kode,
-        m.kategori,
-        m.nama,
+        hidanganName,
         m.gram,
         m.berat_kotor.toFixed(1),
-        m.harga_kg,
-        m.cost.toFixed(2),
         m.energi.toFixed(1),
         m.protein.toFixed(1),
         m.lemak.toFixed(1),
-        m.karbo.toFixed(1)
+        m.karbo.toFixed(1),
+        m.harga_kg,
+        m.cost.toFixed(2)
       ]);
+
+      const currentRowNum = row.number;
+
+      // Logika Merge Cell Header (Nama Hidangan ada di Kolom 2 / B)
+      if (hidanganName !== lastHidangan) {
+        // Jika berganti nilai, merge yang sebelumnya jika > 1 baris
+        if (mergeStartRow !== -1 && (currentRowNum - 1) > mergeStartRow) {
+          sheet.mergeCells(`B${mergeStartRow}:B${currentRowNum - 1}`);
+        }
+        // Set awal blok baru
+        mergeStartRow = currentRowNum;
+        lastHidangan = hidanganName;
+      }
+
       row.eachCell((cell) => {
         cell.border = { top: { style: "thin" }, left: { style: "thin" }, bottom: { style: "thin" }, right: { style: "thin" } };
+        cell.alignment = { vertical: "middle" };
       });
       // Formatting numbers
-      row.getCell(7).numFmt = '#,##0'; // Harga/Kg
-      row.getCell(8).numFmt = '#,##0.00'; // Cost
-      row.getCell(9).numFmt = '0.0'; // Gizi
-      row.getCell(10).numFmt = '0.0';
-      row.getCell(11).numFmt = '0.0';
-      row.getCell(12).numFmt = '0.0';
+      row.getCell(5).numFmt = '0.0'; // Gizi E
+      row.getCell(6).numFmt = '0.0'; // P
+      row.getCell(7).numFmt = '0.0'; // L
+      row.getCell(8).numFmt = '0.0'; // K
+      row.getCell(9).numFmt = '#,##0'; // Harga/Kg
+      row.getCell(10).numFmt = '#,##0.00'; // Cost
     });
+
+    // Merge untuk blok terakhir (jika ada) di akhir loop
+    if (mergeStartRow !== -1 && (sheet.rowCount) > mergeStartRow) {
+      sheet.mergeCells(`B${mergeStartRow}:B${sheet.rowCount}`);
+    }
 
     // --- Hitung Total ---
     const totals = menuItems.reduce((acc, m) => ({
@@ -417,8 +458,9 @@ export default function SusunMenuMBG() {
 
     // --- Baris Total Cost Bahan ---
     const totalRow = sheet.addRow([
-      "", "", "", "TOTAL BIAYA BAHAN", "", "", "", totals.c.toFixed(2), totals.e.toFixed(1), totals.p.toFixed(1), totals.l.toFixed(1), totals.k.toFixed(1)
+      "", "TOTAL BIAYA BAHAN", "", "", totals.e.toFixed(1), totals.p.toFixed(1), totals.l.toFixed(1), totals.k.toFixed(1), "", totals.c.toFixed(2)
     ]);
+    sheet.mergeCells(`B${totalRow.number}:D${totalRow.number}`);
     totalRow.eachCell((cell) => {
       cell.font = { bold: true };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
@@ -426,9 +468,11 @@ export default function SusunMenuMBG() {
     });
 
     // --- Baris Target AKG ---
+    // Target AKG untuk digabungkan menjadi 1 sel Protein
     const targetRow = sheet.addRow([
-      "", "", "", "TARGET JUKNIS BGN / AKG", "", "", "", "", `${targetData.minE}-${targetData.maxE}`, `> ${targetData.minP}`, `${targetData.minL}-${targetData.maxL}`, `${targetData.minK}-${targetData.maxK}`
+      "", "TARGET JUKNIS BGN / AKG", "", "", `${targetData.minE}-${targetData.maxE}`, `> ${targetData.minP}`, `${targetData.minL}-${targetData.maxL}`, `${targetData.minK}-${targetData.maxK}`, "", ""
     ]);
+    sheet.mergeCells(`B${targetRow.number}:D${targetRow.number}`);
     targetRow.eachCell((cell) => {
       cell.font = { bold: true, color: { argb: "FF0284C7" } };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE0F2FE" } };
@@ -447,20 +491,18 @@ export default function SusunMenuMBG() {
     finalBudgetRow.font = { bold: true, color: { argb: finalAmount <= targetData.budgetTarget ? "FF16A34A" : "FFDC2626" } };
     sheet.addRow(["", "Budget Maksimal Juknis BGN:", "", `Rp ${targetData.budgetTarget.toLocaleString("id-ID")}`]).font = { italic: true };
 
-    // --- Atur Lebar Kolom Murni ---
+    // --- Atur Lebar Kolom Murni (Landscape Friendly) ---
     sheet.columns = [
       { width: 5 },   // No
-      { width: 10 },  // Kode
-      { width: 25 },  // Kategori
-      { width: 35 },  // Nama Bahan
+      { width: 35 },  // Nama Hidangan (Lebar extra tanpa bahan makanan)
       { width: 15 },  // Berat Bersih
       { width: 15 },  // Berat Kotor
-      { width: 15 },  // Harga/Kg
-      { width: 18 },  // Cost
       { width: 15 },  // Energi
       { width: 15 },  // Protein
       { width: 15 },  // Lemak
-      { width: 15 }   // Karbo
+      { width: 15 },  // Karbo
+      { width: 18 },  // Harga/Kg
+      { width: 18 }   // Cost
     ];
 
     // --- Generate dan Download File ---
@@ -735,51 +777,46 @@ export default function SusunMenuMBG() {
 
       {/* INPUT BAR */}
       <div style={{ background: "#fff", padding: 20, borderRadius: 16, border: "1px solid #e2e8f0", marginBottom: 24, overflow: "visible", position: "relative" }}>
+
+        {/* ROW 1: CARI BAHAN */}
+        <div style={{ position: "relative", zIndex: 50, marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block" }}>🔍 Cari Bahan Pangan (Database TKPI)</label>
+            <button
+              onClick={() => setIsCustomModalOpen(true)}
+              style={{ background: "#e0f2fe", border: "1px solid #bae6fd", color: "#0284c7", fontWeight: 700, fontSize: 11, cursor: "pointer", padding: "4px 10px", borderRadius: 6, transition: "background 0.2s" }}
+            >
+              + Tambah Bahan Lokal
+            </button>
+          </div>
+          <input type="text" value={search} onChange={e => handleSearch(e.target.value)} placeholder="Ketik untuk mencari (Mis: Beras, Ayam, Telur)..." style={{ width: "100%", padding: "12px 16px", borderRadius: 8, border: "1px solid #cbd5e1", outline: "none", fontSize: 14 }} />
+
+          {searchResults.length > 0 && (
+            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, marginTop: 4, maxHeight: 250, overflowY: "auto", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)", zIndex: 999 }}>
+              {searchResults.map(item => (
+                <div key={item.kode} onClick={() => selectBahan(item)} style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", cursor: "pointer", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <strong style={{ color: "#0f172a", display: "block" }}>{item.nama}</strong>
+                    {item.sumber === "Kustom / Lokal"
+                      ? <span style={{ fontSize: 11, color: "#f59e0b", display: "block", marginTop: 2, fontWeight: 600 }}>🌟 Sumber: {item.sumber}</span>
+                      : <span style={{ fontSize: 11, color: "#10b981", display: "block", marginTop: 2 }}>Sumber: {item.sumber}</span>
+                    }
+                  </div>
+                  <span style={{ color: "#64748b" }}>E:{item.energi} P:{item.protein}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ROW 2: PROPERTIES */}
         <div style={{ display: "flex", gap: 16, alignItems: "flex-end" }}>
 
-          <div style={{ flex: 2, position: "relative", zIndex: 50 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block" }}>🔍 Cari Bahan Pangan (Database TKPI)</label>
-              {/* PERBAIKAN 4: Tombol Tambah Bahan (tanpa "Kustom") dengan desain yang lebih elegan */}
-              <button
-                onClick={() => setIsCustomModalOpen(true)}
-                style={{
-                  background: "#e0f2fe",
-                  border: "1px solid #bae6fd",
-                  color: "#0284c7",
-                  fontWeight: 700,
-                  fontSize: 11,
-                  cursor: "pointer",
-                  padding: "4px 10px",
-                  borderRadius: 6,
-                  transition: "background 0.2s"
-                }}
-              >
-                + Tambah Bahan
-              </button>
-            </div>
-
-            <input type="text" value={search} onChange={e => handleSearch(e.target.value)} placeholder="Ketik untuk mencari (Mis: Nasi, Telur)..." style={{ width: "100%", padding: "12px 16px", borderRadius: 8, border: "1px solid #cbd5e1", outline: "none", fontSize: 14 }} />
-
-            {searchResults.length > 0 && (
-              <div style={{ position: "absolute", top: "100%", left: 0, right: 0, background: "#fff", border: "1px solid #cbd5e1", borderRadius: 8, marginTop: 4, maxHeight: 250, overflowY: "auto", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)", zIndex: 999 }}>
-                {searchResults.map(item => (
-                  <div key={item.kode} onClick={() => selectBahan(item)} style={{ padding: "12px 16px", borderBottom: "1px solid #f1f5f9", cursor: "pointer", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <strong style={{ color: "#0f172a", display: "block" }}>{item.nama}</strong>
-                      {item.sumber === "Kustom / Lokal"
-                        ? <span style={{ fontSize: 11, color: "#f59e0b", display: "block", marginTop: 2, fontWeight: 600 }}>🌟 Sumber: {item.sumber}</span>
-                        : <span style={{ fontSize: 11, color: "#10b981", display: "block", marginTop: 2 }}>Sumber: {item.sumber}</span>
-                      }
-                    </div>
-                    <span style={{ color: "#64748b" }}>E:{item.energi} P:{item.protein}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div style={{ flex: 1.5 }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6 }}>Nama Hidangan (Opsional)</label>
+            <input type="text" value={inputHidangan} onChange={e => setInputHidangan(e.target.value)} placeholder="Mis: Nasi Goreng, Sayur Sop" style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px solid #cbd5e1", outline: "none", background: selectedTkpi ? "#fff" : "#f8fafc" }} disabled={!selectedTkpi} />
           </div>
 
-          {/* DROPDOWN KATEGORI ISI PIRINGKU */}
           <div style={{ flex: 1 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: "#64748b", display: "block", marginBottom: 6 }}>Kategori Komponen</label>
             <select value={inputKategori} onChange={e => setInputKategori(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: 8, border: "1px solid #cbd5e1", outline: "none", background: selectedTkpi ? "#fff" : "#f8fafc", cursor: "pointer" }} disabled={!selectedTkpi}>
@@ -831,28 +868,87 @@ export default function SusunMenuMBG() {
             <table style={{ width: "100%", minWidth: 850, textAlign: "left", fontSize: 13, borderCollapse: "collapse" }}>
               <thead>
                 <tr style={{ background: "#f8fafc", color: "#64748b" }}>
-                  <th style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>BAHAN PANGAN</th>
+                  <th style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>NAMA HIDANGAN</th>
+                  <th style={{ whiteSpace: "nowrap" }}>BAHAN MAKANAN</th>
+                  <th style={{ whiteSpace: "nowrap" }}>KOTOR (G)</th>
                   <th style={{ whiteSpace: "nowrap" }}>BERSIH (G)</th>
                   <th style={{ whiteSpace: "nowrap" }}>ENERGI</th>
                   <th style={{ whiteSpace: "nowrap" }}>PROTEIN</th>
                   <th style={{ whiteSpace: "nowrap" }}>LEMAK</th>
                   <th style={{ whiteSpace: "nowrap" }}>KARBO</th>
-                  <th style={{ whiteSpace: "nowrap" }}>KATEGORI</th>
-                  <th style={{ whiteSpace: "nowrap" }}>ANGGARAN</th>
+                  <th style={{ whiteSpace: "nowrap" }}>HARGA/KG</th>
+                  <th style={{ whiteSpace: "nowrap" }}>COST (RP)</th>
                   <th style={{ whiteSpace: "nowrap", textAlign: "center" }}>AKSI</th>
                 </tr>
               </thead>
               <tbody>
                 {menuItems.map((m, i) => {
                   const isEditing = editingId === m.id;
+
+                  // Tentukan nama hidangan aktual baris ini
+                  let hn = m.hidangan || m.kategori || "-";
+                  if (!m.hidangan) {
+                    if (m.kategori === "Makanan Pokok") hn = "Nasi / Pengganti";
+                    else if (m.kategori === "Sayuran") hn = "Sayur";
+                  }
+
+                  // Cek apakah baris ini adalah "Baris Pertama" dari kelompk Hidangan yang sama
+                  let isFirstInGroup = false;
+                  let rowspanCount = 1;
+
+                  if (i === 0 || (() => {
+                    let prevHn = menuItems[i - 1].hidangan || menuItems[i - 1].kategori || "-";
+                    if (!menuItems[i - 1].hidangan) {
+                      if (menuItems[i - 1].kategori === "Makanan Pokok") prevHn = "Nasi / Pengganti";
+                      else if (menuItems[i - 1].kategori === "Sayuran") prevHn = "Sayur";
+                    }
+                    return prevHn !== hn;
+                  })()) {
+                    isFirstInGroup = true;
+                    // Hitung berapa baris ke depan yang hn-nya sama
+                    for (let j = i + 1; j < menuItems.length; j++) {
+                      let nextHn = menuItems[j].hidangan || menuItems[j].kategori || "-";
+                      if (!menuItems[j].hidangan) {
+                        if (menuItems[j].kategori === "Makanan Pokok") nextHn = "Nasi / Pengganti";
+                        else if (menuItems[j].kategori === "Sayuran") nextHn = "Sayur";
+                      }
+                      if (nextHn === hn) rowspanCount++;
+                      else break;
+                    }
+                  }
+
                   return (
                     <tr key={m.id} style={{ borderBottom: "1px solid #f1f5f9", background: isEditing ? "#fffbeb" : "transparent" }}>
-                      <td style={{ padding: "12px 16px", fontWeight: 600, color: "#334155", minWidth: 160 }}>
-                        {m.nama}
-                      </td>
+
+                      {/* Hanya render cell Nama Hidangan jika dia first in group ATAU sedang diedit (agar form edit tidak berantakan) */}
+                      {(isFirstInGroup || isEditing) && (
+                        <td rowSpan={isEditing ? 1 : rowspanCount} style={{ padding: "12px 16px", borderRight: "1px solid #f1f5f9", verticalAlign: "top" }}>
+                          {isEditing ? (
+                            <>
+                              <input type="text" value={editHidangan} onChange={e => setEditHidangan(e.target.value)} placeholder="Hidangan" style={{ width: 140, padding: "4px 6px", borderRadius: 4, border: "1px solid #f59e0b", outline: "none", fontSize: 12, fontWeight: 600, marginBottom: 4, display: "block" }} />
+                              <select value={editKategori} onChange={e => setEditKategori(e.target.value)} style={{ width: 140, padding: "4px 6px", borderRadius: 4, border: "1px solid #f59e0b", outline: "none", fontSize: 11, display: "block" }}>
+                                <option value="Makanan Pokok">Makanan Pokok</option>
+                                <option value="Lauk Hewani">Lauk Hewani</option>
+                                <option value="Lauk Nabati">Lauk Nabati</option>
+                                <option value="Sayuran">Sayuran</option>
+                                <option value="Buah">Buah</option>
+                                <option value="Lainnya">Bumbu/Lainnya</option>
+                              </select>
+                            </>
+                          ) : (
+                            <>
+                              <div style={{ fontWeight: 800, color: "#1e293b", fontSize: 14, marginBottom: 6 }}>{hn}</div>
+                              {/* Tambahkan badge list kategori dari child members jika mau lebih detail (opsional), sementara tunjukkan kategori item pertama */}
+                              <span style={{ background: "#e2e8f0", padding: "4px 8px", borderRadius: 4, fontSize: 10, color: "#475569", fontWeight: 700, display: "inline-block" }}>{m.kategori}</span>
+                            </>
+                          )}
+                        </td>
+                      )}
+                      <td style={{ fontWeight: 600, color: "#334155", maxWidth: 180, whiteSpace: "normal" }}>{m.nama}</td>
+                      <td>{m.berat_kotor.toFixed(1)}</td>
                       <td>
                         {isEditing ? (
-                          <input type="number" value={editGram} onChange={e => setEditGram(Number(e.target.value))} style={{ width: 70, padding: "4px 6px", borderRadius: 4, border: "1px solid #f59e0b", outline: "none", fontWeight: 600 }} />
+                          <input type="number" value={editGram} onChange={e => setEditGram(Number(e.target.value))} style={{ width: 60, padding: "4px 6px", borderRadius: 4, border: "1px solid #f59e0b", outline: "none", fontWeight: 600 }} />
                         ) : m.gram}
                       </td>
                       <td>{m.energi.toFixed(1)}</td>
@@ -861,16 +957,9 @@ export default function SusunMenuMBG() {
                       <td>{m.karbo.toFixed(1)}</td>
                       <td>
                         {isEditing ? (
-                          <select value={editKategori} onChange={e => setEditKategori(e.target.value)} style={{ padding: "4px 6px", borderRadius: 4, border: "1px solid #f59e0b", outline: "none", fontSize: 11, fontWeight: 600 }}>
-                            <option value="Makanan Pokok">🍚 Makanan Pokok</option>
-                            <option value="Lauk Hewani">🍗 Lauk Hewani</option>
-                            <option value="Lauk Nabati">🧀 Lauk Nabati</option>
-                            <option value="Sayuran">🥬 Sayuran</option>
-                            <option value="Buah">🍉 Buah</option>
-                            <option value="Lainnya">🧂 Bumbu/Lainnya</option>
-                          </select>
+                          <input type="number" value={editHarga} onChange={e => setEditHarga(Number(e.target.value))} style={{ width: 70, padding: "4px 6px", borderRadius: 4, border: "1px solid #f59e0b", outline: "none", fontSize: 11 }} />
                         ) : (
-                          <span style={{ background: "#e2e8f0", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>{m.kategori}</span>
+                          <span style={{ color: "#475569", whiteSpace: "nowrap" }}>Rp {m.harga_kg.toLocaleString("id-ID")}</span>
                         )}
                       </td>
                       <td style={{ color: "#059669", fontWeight: 600, whiteSpace: "nowrap" }}>Rp {m.cost.toLocaleString("id-ID")}</td>
@@ -890,7 +979,7 @@ export default function SusunMenuMBG() {
                     </tr>
                   );
                 })}
-                {menuItems.length === 0 && <tr><td colSpan={9} style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>Belum ada bahan yang ditambahkan ke dalam piring.</td></tr>}
+                {menuItems.length === 0 && <tr><td colSpan={10} style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>Belum ada bahan yang ditambahkan ke dalam piring.</td></tr>}
               </tbody>
             </table>
           </div>

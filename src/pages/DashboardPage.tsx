@@ -1,5 +1,7 @@
 // File: src/pages/DashboardPage.tsx
+import { useEffect, useState } from "react";
 import { ProgBar } from "../components/ProgBar";
+import { supabase } from "../config/supabaseClient";
 
 export default function DashboardPage() {
   const today = new Date().toLocaleDateString("id-ID", {
@@ -8,6 +10,37 @@ export default function DashboardPage() {
     month: "long",
     day: "numeric",
   });
+
+  const [totalMenu, setTotalMenu] = useState("-");
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadStats() {
+      // Hitung total siklus menu
+      const { count } = await supabase
+        .from("rencana_menu")
+        .select("*", { count: "exact", head: true });
+
+      if (count !== null) setTotalMenu(count.toString());
+
+      // Ambil 4 menu terbaru sebagai log aktivitas
+      const { data } = await supabase
+        .from("rencana_menu")
+        .select("nama_paket, created_at, hari")
+        .order("created_at", { ascending: false })
+        .limit(4);
+
+      if (data) {
+        setRecentActivities(data.map(d => ({
+          text: `Menu ${d.nama_paket} (${d.hari}) ditambahkan ke siklus`,
+          // Format relatif kasar:
+          time: new Date(d.created_at).toLocaleDateString("id-ID"),
+          dot: "#6366f1"
+        })));
+      }
+    }
+    loadStats();
+  }, []);
 
   return (
     <div>
@@ -30,19 +63,19 @@ export default function DashboardPage() {
       {/* Grid Statistik Atas */}
       <div className="sg sg-4">
         {[
-          { icon: "🏫", color: "#d8f3dc", val: "6", lbl: "Sekolah Aktif" },
+          { icon: "🥗", color: "#d8f3dc", val: totalMenu, lbl: "Menu Tersusun" },
           {
             icon: "👨‍🎓",
             color: "#e0e7ff",
-            val: "2.063",
-            lbl: "Siswa Terdaftar",
+            val: "3",
+            lbl: "Sekolah Intervensi",
           },
-          { icon: "👥", color: "#fef3c7", val: "12", lbl: "Pengguna Sistem" },
+          { icon: "📦", color: "#fef3c7", val: "10+", lbl: "Bahan Pangan Tersertifikasi" },
           {
             icon: "✅",
             color: "#fce7f3",
-            val: "78%",
-            lbl: "Distribusi Hari Ini",
+            val: "Aman",
+            lbl: "Status QA Keamanan",
           },
         ].map((s, i) => (
           <div key={i} className="sc">
@@ -62,28 +95,7 @@ export default function DashboardPage() {
             <div className="ch-title">Aktivitas Terbaru</div>
           </div>
           <div className="card-body">
-            {[
-              {
-                dot: "#40916c",
-                text: "Cycle menu minggu 3 diperbarui Ahli Gizi",
-                time: "10 mnt lalu",
-              },
-              {
-                dot: "#6366f1",
-                text: "QC checklist SDN 01 selesai — 100% passed",
-                time: "28 mnt lalu",
-              },
-              {
-                dot: "#e9c46a",
-                text: "Stok bayam SDN 05 di bawah minimum",
-                time: "1 jam lalu",
-              },
-              {
-                dot: "#e76f51",
-                text: "4 siswa teridentifikasi berisiko stunting",
-                time: "2 jam lalu",
-              },
-            ].map((a, i) => (
+            {recentActivities.length > 0 ? recentActivities.map((a, i) => (
               <div
                 key={i}
                 style={{
@@ -115,7 +127,9 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div style={{ fontSize: 13, color: "var(--txt3)", textAlign: "center", padding: "12px 0" }}>Belum ada aktivitas menu terbaru.</div>
+            )}
           </div>
         </div>
 

@@ -1,8 +1,10 @@
 // File: src/pages/UsersPage.tsx
 import { useState, useEffect } from "react";
 import { supabase } from "../config/supabaseClient";
+import { useUI } from "../contexts/UIContext";
 
 export default function UsersPage() {
+  const { showToast, showConfirm } = useUI();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -43,7 +45,7 @@ export default function UsersPage() {
     });
 
     if (authError) {
-      alert("Gagal membuat akses login: " + authError.message);
+      showToast("Gagal membuat akses login: " + authError.message, "error");
       setIsSubmitting(false);
       return;
     }
@@ -64,9 +66,9 @@ export default function UsersPage() {
         setRole("staff");
         setShowPassword(false); // Kembalikan ke mode tersembunyi
         fetchUsers();
-        alert(`Berhasil! Akun ${email} sekarang bisa digunakan untuk Login.`);
+        showToast(`Berhasil! Akun ${email} sekarang bisa digunakan untuk Login.`, "success");
       } else {
-        alert("Akses berhasil dibuat, tapi gagal menyimpan profil.");
+        showToast("Akses berhasil dibuat, tapi gagal menyimpan profil.", "warning");
         console.error(profileError);
       }
     }
@@ -75,21 +77,21 @@ export default function UsersPage() {
   };
 
   const handleDelete = async (id: string, namaUser: string) => {
-    if (
-      window.confirm(
-        `Apakah Anda yakin ingin menghapus permanen akses untuk ${namaUser}?`,
-      )
-    ) {
-      const { error } = await supabase
-        .from("user_profiles")
-        .delete()
-        .eq("id", id);
-      if (!error) {
-        setUsers(users.filter((u) => u.id !== id));
-      } else {
-        alert("Gagal menghapus pengguna!");
+    showConfirm(
+      `Apakah Anda yakin ingin menghapus permanen akses untuk ${namaUser}?`,
+      async () => {
+        const { error } = await supabase
+          .from("user_profiles")
+          .delete()
+          .eq("id", id);
+        if (!error) {
+          setUsers(users.filter((u) => u.id !== id));
+          showToast("Akses pengguna berhasil dihapus.", "success");
+        } else {
+          showToast("Gagal menghapus pengguna!", "error");
+        }
       }
-    }
+    );
   };
 
   return (

@@ -3,9 +3,11 @@ import { useState, useEffect } from "react";
 import { supabase } from "../config/supabaseClient";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
+import { useUI } from "../contexts/UIContext";
 
 export default function CycleMenuPage() {
   const HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat"];
+  const { showToast, showConfirm } = useUI();
   const [week, setWeek] = useState(1);
   const [loading, setLoading] = useState(true);
 
@@ -24,7 +26,8 @@ export default function CycleMenuPage() {
     const { data: menuData, error: menuError } = await supabase
       .from("rencana_menu")
       .select("*")
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .limit(50);
 
     if (!menuError && menuData) {
       const mappedMenus: Record<number, any[]> = { 1: [], 2: [], 3: [], 4: [] };
@@ -94,7 +97,7 @@ export default function CycleMenuPage() {
           mappedMenus[weekIndex].push({
             id: item.id,
             hari: hari,
-            nama: item.nama_paket || `Menu ${hari}`,
+            nama: item.nama_paket || `Menu ${hari} `,
             lauk: laukText,
             buah: buahText,
             kal: Math.round(kal),
@@ -119,21 +122,21 @@ export default function CycleMenuPage() {
   }, []);
 
   const handleDelete = async (id: string, namaMenu: string) => {
-    if (
-      window.confirm(
-        `Apakah Anda yakin ingin menghapus menu "${namaMenu}" secara permanen?`,
-      )
-    ) {
-      const { error } = await supabase
-        .from("rencana_menu")
-        .delete()
-        .eq("id", id);
-      if (!error) {
-        fetchCycleMenus();
-      } else {
-        alert("Gagal menghapus data: " + error.message);
+    showConfirm(
+      `Apakah Anda yakin ingin menghapus menu "${namaMenu}" secara permanen ? `,
+      async () => {
+        const { error } = await supabase
+          .from("rencana_menu")
+          .delete()
+          .eq("id", id);
+        if (!error) {
+          fetchCycleMenus();
+          showToast(`Siklus Menu "${namaMenu}" berhasil dihapus.`, "success");
+        } else {
+          showToast("Gagal menghapus data: " + error.message, "error");
+        }
       }
-    }
+    );
   };
 
   const cur = menus[week] || [];
@@ -144,18 +147,18 @@ export default function CycleMenuPage() {
   // --- FUNGSI EKSPOR SIKLUS MENU MINGGUAN ---
   const handleExportSiklusExcel = async () => {
     if (cur.length === 0) {
-      alert("Tidak ada data menu pada minggu ini untuk diekspor.");
+      showToast("Tidak ada data menu pada minggu ini untuk diekspor.", "warning");
       return;
     }
 
     const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet(`Siklus Menu Minggu ${week}`, {
+    const sheet = workbook.addWorksheet(`Siklus Menu Minggu ${week} `, {
       pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
     });
 
     // --- KOP SURAT ---
     sheet.mergeCells("A1:K1");
-    sheet.getCell("A1").value = `LAPORAN SIKLUS MENU MAKAN BERGIZI GRATIS (MBG) — MINGGU KE-${week}`;
+    sheet.getCell("A1").value = `LAPORAN SIKLUS MENU MAKAN BERGIZI GRATIS(MBG) — MINGGU KE - ${week} `;
     sheet.getCell("A1").font = { bold: true, size: 14 };
     sheet.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
 
@@ -174,15 +177,15 @@ export default function CycleMenuPage() {
     const buildDailyTable = (menuHari: any) => {
       // 1. Judul Hari
       sheet.addRow([]);
-      const subHeaderRow = sheet.addRow([`HARI: ${menuHari.hari.toUpperCase()} — ${menuHari.nama}`]);
-      sheet.mergeCells(`A${subHeaderRow.number}:J${subHeaderRow.number}`);
+      const subHeaderRow = sheet.addRow([`HARI: ${menuHari.hari.toUpperCase()} — ${menuHari.nama} `]);
+      sheet.mergeCells(`A${subHeaderRow.number}:J${subHeaderRow.number} `);
       subHeaderRow.getCell(1).font = { bold: true, size: 12, color: { argb: "FFFFFFFF" } };
       subHeaderRow.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } }; // Biru dongker
       subHeaderRow.getCell(1).alignment = { horizontal: "left", vertical: "middle" };
 
       // 2. Header Kolom Rincian
       const headerRow = sheet.addRow([
-        "No", "Nama Hidangan", "Berat Kotor (g)", "Berat Bersih (g)", "Energi (kkal)", "Protein (g)", "Lemak (g)", "Karbo (g)", "Harga/Kg (Rp)", "Cost Bahan (Rp)"
+        "No", "Nama Hidangan", "Berat Kotor (g)", "Berat Bersih (g)", "Energi (kkal)", "Protein (g)", "Lemak (g)", "Karbo (g)", "Serat (g)", "Harga/Kg (Rp)", "Cost Bahan (Rp)"
       ]);
       headerRow.eachCell((cell) => {
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE2E8F0" } };
@@ -201,14 +204,14 @@ export default function CycleMenuPage() {
       }
 
       if (items.length === 0) {
-        const trRow = sheet.addRow(["", "Tidak ada rincian bahan makanan", "", "", "", "", "", "", "", ""]);
-        sheet.mergeCells(`B${trRow.number}:J${trRow.number}`);
+        const trRow = sheet.addRow(["", "Tidak ada rincian bahan makanan", "", "", "", "", "", "", "", "", ""]);
+        sheet.mergeCells(`B${trRow.number}:K${trRow.number} `);
         trRow.font = { italic: true };
         return;
       }
 
       // 4. Isi Data Tabel Hari Itu
-      let tE = 0, tP = 0, tL = 0, tK = 0, tCost = 0;
+      let tE = 0, tP = 0, tL = 0, tK = 0, tS = 0, tCost = 0;
 
       // State tracking untuk merge cells
       let lastHidangan = "";
@@ -218,7 +221,7 @@ export default function CycleMenuPage() {
         const pTotal = m.protein || 0;
 
         tE += m.energi || 0; tP += pTotal;
-        tL += m.lemak || 0; tK += m.karbo || 0; tCost += m.cost || 0;
+        tL += m.lemak || 0; tK += m.karbo || 0; tS += m.serat || 0; tCost += m.cost || 0;
 
         let hidanganName = m.hidangan || m.kategori || "-";
         if (!m.hidangan) {
@@ -235,6 +238,7 @@ export default function CycleMenuPage() {
           Number(pTotal).toFixed(1),
           Number(m.lemak || 0).toFixed(1),
           Number(m.karbo || 0).toFixed(1),
+          Number(m.serat || 0).toFixed(1),
           Number(m.harga_kg || 0),
           Number(m.cost || 0).toFixed(2)
         ]);
@@ -245,7 +249,7 @@ export default function CycleMenuPage() {
         if (hidanganName !== lastHidangan) {
           // Jika berganti nilai, merge yang sebelumnya jika > 1 baris
           if (mergeStartRow !== -1 && (currentRowNum - 1) > mergeStartRow) {
-            sheet.mergeCells(`B${mergeStartRow}:B${currentRowNum - 1}`);
+            sheet.mergeCells(`B${mergeStartRow}:B${currentRowNum - 1} `);
           }
           // Set awal blok baru
           mergeStartRow = currentRowNum;
@@ -263,21 +267,22 @@ export default function CycleMenuPage() {
         row.getCell(6).numFmt = '0.0';  // P
         row.getCell(7).numFmt = '0.0';  // L
         row.getCell(8).numFmt = '0.0'; // K
-        row.getCell(9).numFmt = '#,##0'; // Harga Kg
-        row.getCell(10).numFmt = '#,##0.00'; // Cost
+        row.getCell(9).numFmt = '0.0'; // S
+        row.getCell(10).numFmt = '#,##0'; // Harga Kg
+        row.getCell(11).numFmt = '#,##0.00'; // Cost
       });
 
       // Merge untuk blok terakhir (jika ada) di akhir loop
       if (mergeStartRow !== -1 && (sheet.rowCount) > mergeStartRow) {
-        sheet.mergeCells(`B${mergeStartRow}:B${sheet.rowCount}`);
+        sheet.mergeCells(`B${mergeStartRow}:B${sheet.rowCount} `);
       }
 
       // 5. Total Harian
       const finalCostHarian = tCost * 1.1; // margin+bumbu
       const totalRow = sheet.addRow([
-        "", "TOTAL BIAYA BAHAN PER PORSI", "", "", tE.toFixed(1), tP.toFixed(1), tL.toFixed(1), tK.toFixed(1), "", tCost.toFixed(2)
+        "", "TOTAL BIAYA BAHAN PER PORSI", "", "", tE.toFixed(1), tP.toFixed(1), tL.toFixed(1), tK.toFixed(1), tS.toFixed(1), "", tCost.toFixed(2)
       ]);
-      sheet.mergeCells(`B${totalRow.number}:D${totalRow.number}`);
+      sheet.mergeCells(`B${totalRow.number}:D${totalRow.number} `);
       totalRow.eachCell((cell) => {
         cell.font = { bold: true };
         cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF8FAFC" } };
@@ -285,11 +290,11 @@ export default function CycleMenuPage() {
       });
       // Baris Rangkuman Anggaran + Bumbu 10%
       const estimasiRow = sheet.addRow([
-        "", "ESTIMASI TOTAL HARGA (+10% Bumbu & Margin):", "", "", "", "", "", "", "", `Rp ${finalCostHarian.toLocaleString("id-ID", { minimumFractionDigits: 2 })}`
+        "", "ESTIMASI TOTAL HARGA (+10% Bumbu & Margin):", "", "", "", "", "", "", "", "", `Rp ${finalCostHarian.toLocaleString("id-ID", { minimumFractionDigits: 2 })} `
       ]);
-      sheet.mergeCells(`B${estimasiRow.number}:I${estimasiRow.number}`);
+      sheet.mergeCells(`B${estimasiRow.number}:J${estimasiRow.number} `);
       estimasiRow.getCell(2).font = { bold: true, italic: true };
-      estimasiRow.getCell(10).font = { bold: true, color: { argb: "FF047857" } };
+      estimasiRow.getCell(11).font = { bold: true, color: { argb: "FF047857" } };
     };
 
     // --- LOOP PEMBUATAN TABEL HARI (SENIN - JUMAT) ---
@@ -302,21 +307,61 @@ export default function CycleMenuPage() {
     // --- Atur Lebar Kolom Murni (Landscape Friendly) ---
     sheet.columns = [
       { width: 5 },   // No
-      { width: 35 },  // Kategori
+      { width: 35 },  // Kategori/Menu
       { width: 14 },  // B.Kotor
       { width: 14 },  // B.Bersih
       { width: 14 },  // E
       { width: 14 },  // P
       { width: 14 },  // L
       { width: 14 },  // K
+      { width: 14 },  // S
       { width: 22 },  // Harga/Kg
       { width: 22 }   // Cost
     ];
 
+    // --- Tanda Tangan Ahli Gizi Mingguan ---
+    const { data: { user } } = await supabase.auth.getUser();
+    let profileData = null;
+    if (user) {
+      const { data: pData } = await supabase.from('user_profiles').select('*').eq('id', user.id).single();
+      profileData = pData;
+    }
+
+    sheet.addRow([]);
+    sheet.addRow([]);
+
+    // Tanda Tangan ditaruh di sisi kanan (Kolom J - Cost Bahan)
+    const dateRow = sheet.addRow(["", "", "", "", "", "", "", "", "", "Disahkan oleh,", ""]);
+    dateRow.getCell(10).alignment = { horizontal: "center" };
+    sheet.mergeCells(`J${dateRow.number}:K${dateRow.number} `);
+
+    sheet.addRow([]);
+    sheet.addRow([]);
+    sheet.addRow([]);
+
+    const nameStr = profileData?.nama_lengkap ? `${profileData.nama_lengkap}${profileData.gelar ? ', ' + profileData.gelar : ''} ` : (user?.user_metadata?.full_name || "Pembuat Menu");
+    const nameRow = sheet.addRow(["", "", "", "", "", "", "", "", "", nameStr, ""]);
+    nameRow.getCell(10).font = { bold: true, underline: true };
+    nameRow.getCell(10).alignment = { horizontal: "center" };
+    sheet.mergeCells(`J${nameRow.number}:K${nameRow.number} `);
+
+    if (profileData?.nomor_str_nip) {
+      const nipRow = sheet.addRow(["", "", "", "", "", "", "", "", "", `NIP / STR: ${profileData.nomor_str_nip} `, ""]);
+      nipRow.getCell(10).alignment = { horizontal: "center" };
+      sheet.mergeCells(`J${nipRow.number}:K${nipRow.number} `);
+    }
+
+    if (profileData?.nama_sppg_instansi) {
+      const instansiRow = sheet.addRow(["", "", "", "", "", "", "", "", "", profileData.nama_sppg_instansi, ""]);
+      instansiRow.getCell(10).font = { italic: true };
+      instansiRow.getCell(10).alignment = { horizontal: "center" };
+      sheet.mergeCells(`J${instansiRow.number}:K${instansiRow.number} `);
+    }
+
     // --- GENERATE FILE EXCEL ---
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    const filename = `Laporan_Siklus_Menu_M${week}_MBG.xlsx`;
+    const filename = `Laporan_Siklus_Menu_M${week} _MBG.xlsx`;
     saveAs(blob, filename);
   };
 
@@ -348,7 +393,7 @@ export default function CycleMenuPage() {
           {[1, 2, 3, 4].map((w) => (
             <div
               key={w}
-              className={`ftab ${week === w ? "active" : ""}`}
+              className={`ftab ${week === w ? "active" : ""} `}
               onClick={() => setWeek(w)}
             >
               Minggu {w}
@@ -374,7 +419,7 @@ export default function CycleMenuPage() {
           </button>
           <button
             className="btn btn-primary btn-sm"
-            onClick={() => alert("Gunakan Halaman 'Susun Menu MBG' dari menu Sidebar untuk mengkreasikan dan menyimpan menu baru, lalu Menu tersebut akan otomatis tersimpan dalam siklus ini.")}
+            onClick={() => showToast("Gunakan Halaman 'Susun Menu MBG' dari menu Sidebar untuk mengkreasikan dan menyimpan menu baru, lalu Menu tersebut akan otomatis tersimpan dalam siklus ini.", "info")}
             title="Tambah menu melalui kalkulator FNCA"
           >
             ＋ Tambah Menu
@@ -395,9 +440,12 @@ export default function CycleMenuPage() {
           ⏳ Memuat data dari server Supabase...
         </div>
       ) : cur.length === 0 ? (
-        <div className="empty">
-          Belum ada menu untuk minggu ini. Silakan racik dan simpan menu dari
-          FNCA Kalkulator.
+        <div style={{ textAlign: "center", padding: "60px 20px", background: "white", borderRadius: 16, border: "1px dashed #cbd5e1", marginTop: 24 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🗓️</div>
+          <h3 style={{ margin: "0 0 8px 0", color: "#1e293b" }}>Belum Ada Siklus Menu</h3>
+          <p style={{ margin: "0 0 20px 0", color: "#64748b", maxWidth: 400, marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>
+            Siklus menu untuk minggu ini masih kosong. Silakan racik dan simpan standar menu Master MBG Anda melalui halaman Susun Menu MBG.
+          </p>
         </div>
       ) : (
         <div
@@ -462,7 +510,7 @@ export default function CycleMenuPage() {
                     {m.kal} kkal
                   </div>
                   <div style={{ fontSize: 10, color: "var(--txt3)", fontWeight: 600 }}>
-                    (P:{m.protein} L:{m.lemak} K:{m.karbo})
+                    (P:{m.protein} L:{m.lemak} K:{m.karbo} S:{m.serat})
                   </div>
                 </div>
               </div>
@@ -472,7 +520,7 @@ export default function CycleMenuPage() {
                 <button
                   className="btn-icon-sq"
                   style={{ fontSize: 12 }}
-                  onClick={() => alert("Gunakan halaman Susun Menu untuk memodifikasi menu ini.")}
+                  onClick={() => showToast("Gunakan halaman Susun Menu untuk memodifikasi menu ini.", "info")}
                   title="Edit Menu"
                 >
                   ✏️

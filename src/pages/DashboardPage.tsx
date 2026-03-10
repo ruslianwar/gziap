@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { ProgBar } from "../components/ProgBar";
 import { supabase } from "../config/supabaseClient";
 
-export default function DashboardPage() {
+export default function DashboardPage({ user }: { user?: any }) {
   const today = new Date().toLocaleDateString("id-ID", {
     weekday: "long",
     year: "numeric",
@@ -13,7 +13,9 @@ export default function DashboardPage() {
 
   const [totalMenu, setTotalMenu] = useState("-");
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
+  const [appSettings, setAppSettings] = useState<Record<string, boolean>>({});
 
+  // Effect untuk stats dasar
   useEffect(() => {
     async function loadStats() {
       // Hitung total siklus menu
@@ -42,6 +44,44 @@ export default function DashboardPage() {
     loadStats();
   }, []);
 
+  // Effect untuk load Settings (khusus Superadmin)
+  useEffect(() => {
+    if (user?.role !== "superadmin") return;
+
+    async function fetchSettings() {
+      const { data } = await supabase.from("app_settings").select("*");
+      if (data) {
+        const smap = data.reduce((acc: any, curr: any) => {
+          acc[curr.key] = curr.value;
+          return acc;
+        }, {});
+        setAppSettings(smap);
+      }
+    }
+    fetchSettings();
+
+    const channel = supabase
+      .channel("dash_app_settings")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "app_settings" },
+        () => fetchSettings()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user]);
+
+  const toggleSetting = async (key: string) => {
+    // Optimistic UI internal state
+    const newVal = appSettings[key] === false ? true : false;
+    setAppSettings((prev) => ({ ...prev, [key]: newVal }));
+    // Lempar update ke DB
+    await supabase.from("app_settings").update({ value: newVal }).eq("key", key);
+  };
+
   return (
     <div>
       <div className="topbar">
@@ -54,7 +94,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="welcome">
-        <div className="welcome-name">Selamat datang, Siti Rahayu! 👋</div>
+        <div className="welcome-name">Selamat datang, {user?.nama_lengkap || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "Ahli Gizi"}! 👋</div>
         <div className="welcome-sub">
           Ringkasan aktivitas platform SiGizi MBG hari ini
         </div>
@@ -64,19 +104,6 @@ export default function DashboardPage() {
       <div className="sg sg-4">
         {[
           { icon: "🥗", color: "#d8f3dc", val: totalMenu, lbl: "Menu Tersusun" },
-          {
-            icon: "👨‍🎓",
-            color: "#e0e7ff",
-            val: "3",
-            lbl: "Sekolah Intervensi",
-          },
-          { icon: "📦", color: "#fef3c7", val: "10+", lbl: "Bahan Pangan Tersertifikasi" },
-          {
-            icon: "✅",
-            color: "#fce7f3",
-            val: "Aman",
-            lbl: "Status QA Keamanan",
-          },
         ].map((s, i) => (
           <div key={i} className="sc">
             <div className="sc-icon" style={{ background: s.color }}>
@@ -140,7 +167,7 @@ export default function DashboardPage() {
           </div>
           <div className="card-body">
             {[
-              { label: "FNCA / Perencanaan Menu", pct: 100, color: "#22c55e" },
+              { label: "Perencanaan Menu", pct: 100, color: "#22c55e" },
               { label: "Supply Chain & Stok", pct: 85, color: "#3b82f6" },
               { label: "QC & Organoleptik", pct: 60, color: "#f59e0b" },
               { label: "Distribusi Makanan", pct: 78, color: "#8b5cf6" },
@@ -169,6 +196,101 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Grid Khusus Superadmin: Pengaturan Visibilitas Modul */}
+      {user?.role === "superadmin" && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div
+            className="card-header"
+            style={{
+              background: "#475569",
+              color: "#fff",
+              borderRadius: "8px 8px 0 0",
+            }}
+          >
+            <div
+              className="ch-title"
+              style={{ display: "flex", alignItems: "center", gap: 8 }}
+            >
+              <span>⚙️</span> Pengaturan Visibilitas Modul (Hak Akses Superadmin)
+            </div>
+          </div>
+          <div
+            className="card-body"
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+              gap: 16,
+            }}
+          >
+            {[
+              { key: "supplychain", label: "Supply Chain", icon: "🏪" },
+              { key: "inventaris", label: "Inventaris / Stok", icon: "📦" },
+              { key: "distribusi", label: "Distribusi", icon: "🚚" },
+              { key: "qc", label: "QC & Organoleptik", icon: "🧪" },
+              { key: "antropometri", label: "Antropometri", icon: "📏" },
+              { key: "sekolah", label: "Data Sekolah", icon: "🏫" },
+            ].map((m) => (
+              <div
+                key={m.key}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "16px",
+                  background: "#f8fafc",
+                  borderRadius: 8,
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    fontSize: 14,
+                    fontWeight: 600,
+                  }}
+                >
+                  <span style={{ fontSize: 18 }}>{m.icon}</span>
+                  {m.label}
+                </div>
+                {/* Komponen Toggle Switch */}
+                <button
+                  onClick={() => toggleSetting(m.key)}
+                  style={{
+                    width: 48,
+                    height: 26,
+                    borderRadius: 13,
+                    background:
+                      appSettings[m.key] !== false ? "#10b981" : "#cbd5e1",
+                    border: "none",
+                    position: "relative",
+                    cursor: "pointer",
+                    transition: "all 0.3s ease",
+                  }}
+                  title={appSettings[m.key] !== false ? "Matikan modul ini" : "Aktifkan modul ini"}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 2,
+                      left: appSettings[m.key] !== false ? 24 : 2,
+                      width: 22,
+                      height: 22,
+                      background: "#fff",
+                      borderRadius: "50%",
+                      transition: "all 0.3s ease",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                    }}
+                  />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

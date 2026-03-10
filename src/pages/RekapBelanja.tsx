@@ -1,6 +1,7 @@
 // File: src/pages/RekapBelanja.tsx
 import { useState, useEffect } from "react";
 import { supabase } from "../config/supabaseClient";
+import { useUI } from "../contexts/UIContext";
 
 interface SavedMenu {
   id: string;
@@ -19,6 +20,7 @@ interface RekapItem {
 }
 
 export default function RekapBelanja() {
+  const { showToast } = useUI();
   const [menus, setMenus] = useState<SavedMenu[]>([]);
   const [selectedMenuIds, setSelectedMenuIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -36,7 +38,7 @@ export default function RekapBelanja() {
         .select("*")
         .eq("status", "approved") // Hanya tarik menu yang sudah Valid
         .order("created_at", { ascending: false });
-      
+
       if (data) setMenus(data as SavedMenu[]);
       setIsLoading(false);
     };
@@ -82,7 +84,7 @@ export default function RekapBelanja() {
   };
 
   const rekapHasil = generateRekap();
-  
+
   // Hitung Total Uang Belanja Keseluruhan
   const totalEstimasiRAB = rekapHasil.reduce((acc, item) => {
     const kebutuhanRealGram = item.total_berat_kotor_gram * jumlahPenerima * (1 + (bufferPercent / 100));
@@ -98,16 +100,16 @@ export default function RekapBelanja() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 24, alignItems: "start" }}>
-        
+
         {/* PANEL KIRI: Pilihan Menu & Parameter */}
         <div style={{ background: "#fff", borderRadius: 16, border: "1px solid #e2e8f0", padding: 20 }}>
           <h3 style={{ marginTop: 0, fontSize: 15, borderBottom: "1px solid #e2e8f0", paddingBottom: 12 }}>1. Parameter Logistik</h3>
-          
+
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>👥 Jumlah Penerima (Siswa)</label>
             <input type="number" value={jumlahPenerima} onChange={e => setJumlahPenerima(Number(e.target.value))} style={{ width: "100%", padding: 10, marginTop: 6, borderRadius: 8, border: "1px solid #cbd5e1" }} />
           </div>
-          
+
           <div style={{ marginBottom: 24 }}>
             <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>📦 Cadangan / Buffer (%)</label>
             <input type="number" value={bufferPercent} onChange={e => setBufferPercent(Number(e.target.value))} style={{ width: "100%", padding: 10, marginTop: 6, borderRadius: 8, border: "1px solid #cbd5e1" }} />
@@ -118,7 +120,7 @@ export default function RekapBelanja() {
             <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 400, overflowY: "auto" }}>
               {menus.length === 0 && <p style={{ fontSize: 13, color: "#94a3b8" }}>Belum ada menu yang berstatus Valid.</p>}
               {menus.map(menu => (
-                <label key={menu.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: 12, background: selectedMenuIds.includes(menu.id) ? "#f0fdf4" : "#f8fafc", border: `1px solid ${selectedMenuIds.includes(menu.id) ? "#bbf7d0" : "#e2e8f0"}`, borderRadius: 8, cursor: "pointer" }}>
+                <label key={menu.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: 12, background: selectedMenuIds.includes(menu.id) ? "#f0fdf4" : "#f8fafc", border: `1px solid ${selectedMenuIds.includes(menu.id) ? "#bbf7d0" : "#e2e8f0"} `, borderRadius: 8, cursor: "pointer" }}>
                   <input type="checkbox" checked={selectedMenuIds.includes(menu.id)} onChange={() => toggleMenuSelection(menu.id)} style={{ marginTop: 4 }} />
                   <div>
                     <strong style={{ display: "block", fontSize: 13, color: "#0f172a" }}>{menu.nama_paket}</strong>
@@ -176,7 +178,7 @@ export default function RekapBelanja() {
 
           {rekapHasil.length > 0 && (
             <div style={{ padding: 20, borderTop: "1px solid #e2e8f0", display: "flex", justifyContent: "flex-end" }}>
-              <button onClick={() => alert("Fitur Ekspor PDF/Excel bisa kita tambahkan di sini!")} style={{ background: "#0f172a", color: "#fff", padding: "12px 24px", borderRadius: 8, fontWeight: 700, border: "none", cursor: "pointer" }}>
+              <button onClick={() => showToast("Fitur Ekspor PDF/Excel bisa kita tambahkan di sini!", "info")} style={{ background: "#0f172a", color: "#fff", padding: "12px 24px", borderRadius: 8, fontWeight: 700, border: "none", cursor: "pointer" }}>
                 🖨️ Cetak Daftar Belanja
               </button>
             </div>

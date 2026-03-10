@@ -1,6 +1,7 @@
 // File: src/pages/SusunMenuMBG.tsx
 import { useState, useRef, useEffect } from "react";
 import { supabase } from "../config/supabaseClient";
+import { useUI } from "../contexts/UIContext";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
@@ -20,6 +21,7 @@ interface MenuItem {
   protein: number;
   lemak: number;
   karbo: number;
+  serat: number;
   fe: number;
   vitA: number;
   ca: number;
@@ -36,6 +38,7 @@ interface TkpiItem {
   protein?: string | number | null;
   lemak?: string | number | null;
   karbohidrat?: string | number | null;
+  serat?: string | number | null;
   besi?: string | number | null;
   retinol?: string | number | null;
   karoten_total?: string | number | null;
@@ -58,6 +61,8 @@ interface TargetGroup {
   maxL: number;
   minK: number;
   maxK: number;
+  minS: number;
+  maxS: number;
   budgetTarget: number;
 }
 
@@ -72,17 +77,17 @@ interface SavedMenu {
 
 // --- STANDAR BAKU MBG (BERDASARKAN TABEL 2 JUKNIS BGN 2026 & PERMENKES 28/2019) ---
 const TARGET_GROUPS: Record<string, TargetGroup> = {
-  tk_paud: { label: "Siswa TK/PAUD/TK LB", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 280, maxE: 350, minP: 5.0, maxP: 6.3, minL: 10.0, maxL: 12.5, minK: 44.0, maxK: 55.0, budgetTarget: 8000 },
-  sd_1_3: { label: "Siswa SD/MI/SDLB Kelas 1-3", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 330, maxE: 413, minP: 8.0, maxP: 10.0, minL: 11.0, maxL: 13.8, minK: 50.0, maxK: 62.5, budgetTarget: 8000 },
-  sd_4_6: { label: "Siswa SD/MI/SDLB Kelas 4-6", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 585, maxE: 683, minP: 15.8, maxP: 18.4, minL: 19.5, maxL: 22.8, minK: 87.0, maxK: 101.5, budgetTarget: 10000 },
-  smp: { label: "Siswa SMP/MTs/SMPLB", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 668, maxE: 779, minP: 20.3, maxP: 23.6, minL: 22.5, maxL: 26.3, minK: 97.5, maxK: 113.8, budgetTarget: 10000 },
-  sma: { label: "Siswa SMA/SMK/MA/SMALB", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 713, maxE: 831, minP: 21.0, maxP: 24.5, minL: 22.5, maxL: 26.3, minK: 105.0, maxK: 122.5, budgetTarget: 10000 },
-  pendidik: { label: "Pendidik / Tenaga Kependidikan", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 713, maxE: 831, minP: 21.0, maxP: 24.5, minL: 22.5, maxL: 26.3, minK: 105.0, maxK: 122.5, budgetTarget: 10000 },
-  balita_siang: { label: "Anak Balita (Siang)", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 405, maxE: 473, minP: 6.0, maxP: 7.0, minL: 13.5, maxL: 15.8, minK: 64.5, maxK: 75.3, budgetTarget: 8000 },
-  balita_pagi: { label: "Anak Balita 13-59 bln (Pagi)", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 270, maxE: 338, minP: 4.0, maxP: 5.0, minL: 9.0, maxL: 11.3, minK: 43.0, maxK: 53.8, budgetTarget: 8000 },
-  bayi_pagi: { label: "Bayi 6-11 bulan (Pagi/MPASI)", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 160, maxE: 200, minP: 3.0, maxP: 3.8, minL: 7.0, maxL: 8.8, minK: 21.0, maxK: 26.3, budgetTarget: 8000 },
-  ibu_hamil: { label: "Ibu Hamil", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 753, maxE: 879, minP: 22.1, maxP: 25.8, minL: 20.2, maxL: 23.6, minK: 118.5, maxK: 138.3, budgetTarget: 10000 },
-  ibu_menyusui: { label: "Ibu Menyusui", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 782, maxE: 912, minP: 26.3, maxP: 30.6, minL: 20.2, maxL: 23.5, minK: 123.0, maxK: 143.5, budgetTarget: 10000 }
+  tk_paud: { label: "Siswa TK/PAUD/TK LB", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 280, maxE: 350, minP: 5.0, maxP: 6.3, minL: 10.0, maxL: 12.5, minK: 44.0, maxK: 55.0, minS: 4.0, maxS: 5.0, budgetTarget: 8000 },
+  sd_1_3: { label: "Siswa SD/MI/SDLB Kelas 1-3", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 330, maxE: 413, minP: 8.0, maxP: 10.0, minL: 11.0, maxL: 13.8, minK: 50.0, maxK: 62.5, minS: 4.6, maxS: 5.8, budgetTarget: 8000 },
+  sd_4_6: { label: "Siswa SD/MI/SDLB Kelas 4-6", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 585, maxE: 683, minP: 15.8, maxP: 18.4, minL: 19.5, maxL: 22.8, minK: 87.0, maxK: 101.5, minS: 8.3, maxS: 9.6, budgetTarget: 10000 },
+  smp: { label: "Siswa SMP/MTs/SMPLB", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 668, maxE: 779, minP: 20.3, maxP: 23.6, minL: 22.5, maxL: 26.3, minK: 97.5, maxK: 113.8, minS: 9.5, maxS: 11.0, budgetTarget: 10000 },
+  sma: { label: "Siswa SMA/SMK/MA/SMALB", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 713, maxE: 831, minP: 21.0, maxP: 24.5, minL: 22.5, maxL: 26.3, minK: 105.0, maxK: 122.5, minS: 10.1, maxS: 11.7, budgetTarget: 10000 },
+  pendidik: { label: "Pendidik / Tenaga Kependidikan", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 713, maxE: 831, minP: 21.0, maxP: 24.5, minL: 22.5, maxL: 26.3, minK: 105.0, maxK: 122.5, minS: 10.4, maxS: 12.1, budgetTarget: 10000 },
+  balita_siang: { label: "Anak Balita (Siang)", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 405, maxE: 473, minP: 6.0, maxP: 7.0, minL: 13.5, maxL: 15.8, minK: 64.5, maxK: 75.3, minS: 5.7, maxS: 6.7, budgetTarget: 8000 },
+  balita_pagi: { label: "Anak Balita 13-59 bln (Pagi)", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 270, maxE: 338, minP: 4.0, maxP: 5.0, minL: 9.0, maxL: 11.3, minK: 43.0, maxK: 53.8, minS: 3.8, maxS: 4.8, budgetTarget: 8000 },
+  bayi_pagi: { label: "Bayi 6-11 bulan (Pagi/MPASI)", waktu: "Pagi", akgMin: 20, akgMax: 25, minE: 160, maxE: 200, minP: 3.0, maxP: 3.8, minL: 7.0, maxL: 8.8, minK: 21.0, maxK: 26.3, minS: 2.2, maxS: 2.8, budgetTarget: 8000 },
+  ibu_hamil: { label: "Ibu Hamil", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 753, maxE: 879, minP: 22.1, maxP: 25.8, minL: 20.2, maxL: 23.6, minK: 118.5, maxK: 138.3, minS: 11.6, maxS: 13.5, budgetTarget: 10000 },
+  ibu_menyusui: { label: "Ibu Menyusui", waktu: "Siang", akgMin: 30, akgMax: 35, minE: 782, maxE: 912, minP: 26.3, maxP: 30.6, minL: 20.2, maxL: 23.5, minK: 123.0, maxK: 143.5, minS: 11.9, maxS: 13.8, budgetTarget: 10000 }
 };
 
 // --- KOMPONEN UI ---
@@ -122,15 +127,16 @@ const ProgressBar = ({ label, current, min, max, unit }: { label: string, curren
       </div>
       <div style={{ position: "relative", width: "100%", height: 10, background: "#f1f5f9", borderRadius: 5, overflow: "hidden" }}>
         {/* Zona Target (area hijau semi-transparan) */}
-        <div style={{ position: "absolute", left: `${zoneLeft}%`, width: `${zoneWidth}%`, height: "100%", background: "rgba(34, 197, 94, 0.15)", borderLeft: "1.5px dashed #22c55e", borderRight: "1.5px dashed #22c55e" }}></div>
+        <div style={{ position: "absolute", left: `${zoneLeft}% `, width: `${zoneWidth}% `, height: "100%", background: "rgba(34, 197, 94, 0.15)", borderLeft: "1.5px dashed #22c55e", borderRight: "1.5px dashed #22c55e" }}></div>
         {/* Bar Progress Aktual */}
-        <div style={{ position: "relative", width: `${pct}%`, height: "100%", background: barColor, borderRadius: 5, transition: "width 0.3s ease, background 0.3s ease", zIndex: 1 }}></div>
+        <div style={{ position: "relative", width: `${pct}% `, height: "100%", background: barColor, borderRadius: 5, transition: "width 0.3s ease, background 0.3s ease", zIndex: 1 }}></div>
       </div>
     </div>
   );
 };
 
 export default function SusunMenuMBG() {
+  const { showToast, showConfirm } = useUI();
   const [view, setView] = useState<"list" | "compose">("list");
   const [savedMenus, setSavedMenus] = useState<SavedMenu[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -158,7 +164,7 @@ export default function SusunMenuMBG() {
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
   const [isSavingCustom, setIsSavingCustom] = useState(false);
   const [customBahan, setCustomBahan] = useState({
-    nama: "", bdd: 100, energi: 0, protein: 0, lemak: 0, karbohidrat: 0
+    nama: "", bdd: 100, energi: 0, protein: 0, lemak: 0, karbohidrat: 0, serat: 0
   });
 
   // State Inline Edit
@@ -175,7 +181,7 @@ export default function SusunMenuMBG() {
     let isMounted = true;
     const loadData = async () => {
       setIsLoading(true);
-      const { data } = await supabase.from("rencana_menu").select("*").order("created_at", { ascending: false });
+      const { data } = await supabase.from("rencana_menu").select("*").order("created_at", { ascending: false }).limit(50);
       if (isMounted && data) setSavedMenus(data as SavedMenu[]);
       setIsLoading(false);
     };
@@ -184,10 +190,12 @@ export default function SusunMenuMBG() {
   }, [view]);
 
   const handleDeleteMenu = async (id: string) => {
-    if (!window.confirm("Yakin ingin menghapus menu ini?")) return;
-    await supabase.from("rencana_menu").delete().eq("id", id);
-    const { data } = await supabase.from("rencana_menu").select("*").order("created_at", { ascending: false });
-    if (data) setSavedMenus(data as SavedMenu[]);
+    showConfirm("Yakin ingin menghapus menu ini?", async () => {
+      await supabase.from("rencana_menu").delete().eq("id", id);
+      const { data } = await supabase.from("rencana_menu").select("*").order("created_at", { ascending: false }).limit(50);
+      if (data) setSavedMenus(data as SavedMenu[]);
+      showToast("Menu berhasil dihapus dari daftar.", "success");
+    });
   };
 
   const parseGizi = (val: string | number | null | undefined) => {
@@ -198,9 +206,11 @@ export default function SusunMenuMBG() {
   // --- LOGIKA SIMPAN BAHAN KUSTOM ---
   const handleSaveCustomBahan = async () => {
     if (!customBahan.nama || customBahan.nama.trim() === "") {
-      alert("Nama bahan pangan wajib diisi!");
+      showToast("Nama bahan pangan wajib diisi!", "warning");
       return;
     }
+
+    const { data: { user } } = await supabase.auth.getUser();
 
     setIsSavingCustom(true);
     const newKode = `LOKAL-${Date.now()}`;
@@ -214,7 +224,8 @@ export default function SusunMenuMBG() {
       protein: customBahan.protein,
       lemak: customBahan.lemak,
       karbohidrat: customBahan.karbohidrat,
-      besi: 0, retinol: 0, kalsium: 0, seng: 0, vitamin_c: 0
+      serat: customBahan.serat, besi: 0, retinol: 0, kalsium: 0, seng: 0, vitamin_c: 0,
+      dibuat_oleh: user?.id
     };
 
     const { error } = await supabase.from("data_tkpi").insert([payload]);
@@ -222,14 +233,14 @@ export default function SusunMenuMBG() {
     setIsSavingCustom(false);
 
     if (error) {
-      alert("Gagal menyimpan bahan: " + error.message);
+      showToast("Gagal menyimpan bahan: " + error.message, "error");
     } else {
-      alert("Bahan pangan berhasil ditambahkan ke database!");
+      showToast("Bahan pangan berhasil ditambahkan ke database!", "success");
       setIsCustomModalOpen(false);
       setSelectedTkpi(payload as TkpiItem);
       setInputGram(100);
       setSearch("");
-      setCustomBahan({ nama: "", bdd: 100, energi: 0, protein: 0, lemak: 0, karbohidrat: 0 });
+      setCustomBahan({ nama: "", bdd: 100, energi: 0, protein: 0, lemak: 0, karbohidrat: 0, serat: 0 });
     }
   };
 
@@ -260,7 +271,7 @@ export default function SusunMenuMBG() {
 
   const handleAddFood = () => {
     if (!selectedTkpi) return;
-    if (inputGram <= 0) { alert("Gramase harus lebih dari 0"); return; }
+    if (inputGram <= 0) { showToast("Gramase harus lebih dari 0", "warning"); return; }
 
     const bdd = parseGizi(selectedTkpi.bdd) || 100;
     const factor = (inputGram / 100) * (bdd / 100);
@@ -286,6 +297,7 @@ export default function SusunMenuMBG() {
       protein: parseGizi(selectedTkpi.protein) * factor,
       lemak: parseGizi(selectedTkpi.lemak) * factor,
       karbo: parseGizi(selectedTkpi.karbohidrat) * factor,
+      serat: parseGizi(selectedTkpi.serat) * factor,
       fe: parseGizi(selectedTkpi.besi) * factor,
       vitA: parseGizi(selectedTkpi.retinol || selectedTkpi.karoten_total) * factor,
       ca: parseGizi(selectedTkpi.kalsium) * factor,
@@ -295,6 +307,7 @@ export default function SusunMenuMBG() {
 
     setMenuItems([...menuItems, newFood]);
     setSelectedTkpi(null);
+    setInputHidangan(""); // <- Tambahan: Mengosongkan input hidangan pasca submit
   };
 
   // --- INLINE EDIT HANDLERS ---
@@ -351,7 +364,7 @@ export default function SusunMenuMBG() {
   // --- EKSPOR CSV ---
   const handleExportExcel = async () => {
     if (menuItems.length === 0) {
-      alert("Tidak ada data untuk diekspor.");
+      showToast("Tidak ada data untuk diekspor.", "warning");
       return;
     }
 
@@ -381,7 +394,7 @@ export default function SusunMenuMBG() {
 
     // --- Header Tabel Rincian Bahan ---
     const headerRow = sheet.addRow([
-      "No", "Nama Hidangan", "Berat Bersih (g)", "Berat Kotor (g)", "Energi (kkal)", "Protein (g)", "Lemak (g)", "Karbo (g)", "Harga/Kg (Rp)", "Cost Bahan (Rp)"
+      "No", "Nama Hidangan", "Berat Bersih (g)", "Berat Kotor (g)", "Energi (kkal)", "Protein (g)", "Lemak (g)", "Karbo (g)", "Serat (g)", "Harga/Kg (Rp)", "Cost Bahan (Rp)"
     ]);
 
     headerRow.eachCell((cell) => {
@@ -414,6 +427,7 @@ export default function SusunMenuMBG() {
         m.protein.toFixed(1),
         m.lemak.toFixed(1),
         m.karbo.toFixed(1),
+        (m.serat || 0).toFixed(1),
         m.harga_kg,
         m.cost.toFixed(2)
       ]);
@@ -440,8 +454,9 @@ export default function SusunMenuMBG() {
       row.getCell(6).numFmt = '0.0'; // P
       row.getCell(7).numFmt = '0.0'; // L
       row.getCell(8).numFmt = '0.0'; // K
-      row.getCell(9).numFmt = '#,##0'; // Harga/Kg
-      row.getCell(10).numFmt = '#,##0.00'; // Cost
+      row.getCell(9).numFmt = '0.0'; // Serat
+      row.getCell(10).numFmt = '#,##0'; // Harga/Kg
+      row.getCell(11).numFmt = '#,##0.00'; // Cost
     });
 
     // Merge untuk blok terakhir (jika ada) di akhir loop
@@ -451,14 +466,14 @@ export default function SusunMenuMBG() {
 
     // --- Hitung Total ---
     const totals = menuItems.reduce((acc, m) => ({
-      e: acc.e + m.energi, p: acc.p + m.protein, l: acc.l + m.lemak, k: acc.k + m.karbo, c: acc.c + m.cost
-    }), { e: 0, p: 0, l: 0, k: 0, c: 0 });
+      e: acc.e + m.energi, p: acc.p + m.protein, l: acc.l + m.lemak, k: acc.k + m.karbo, s: acc.s + (m.serat || 0), c: acc.c + m.cost
+    }), { e: 0, p: 0, l: 0, k: 0, s: 0, c: 0 });
 
     const finalAmount = totals.c * 1.1; // + 10% bumbu & margin
 
     // --- Baris Total Cost Bahan ---
     const totalRow = sheet.addRow([
-      "", "TOTAL BIAYA BAHAN", "", "", totals.e.toFixed(1), totals.p.toFixed(1), totals.l.toFixed(1), totals.k.toFixed(1), "", totals.c.toFixed(2)
+      "", "TOTAL BIAYA BAHAN", "", "", totals.e.toFixed(1), totals.p.toFixed(1), totals.l.toFixed(1), totals.k.toFixed(1), totals.s.toFixed(1), "", totals.c.toFixed(2)
     ]);
     sheet.mergeCells(`B${totalRow.number}:D${totalRow.number}`);
     totalRow.eachCell((cell) => {
@@ -470,7 +485,7 @@ export default function SusunMenuMBG() {
     // --- Baris Target AKG ---
     // Target AKG untuk digabungkan menjadi 1 sel Protein
     const targetRow = sheet.addRow([
-      "", "TARGET JUKNIS BGN / AKG", "", "", `${targetData.minE}-${targetData.maxE}`, `> ${targetData.minP}`, `${targetData.minL}-${targetData.maxL}`, `${targetData.minK}-${targetData.maxK}`, "", ""
+      "", "TARGET JUKNIS BGN / AKG", "", "", `${targetData.minE}-${targetData.maxE}`, `> ${targetData.minP}`, `${targetData.minL}-${targetData.maxL}`, `${targetData.minK}-${targetData.maxK}`, `${targetData.minS}-${targetData.maxS}`, "", ""
     ]);
     sheet.mergeCells(`B${targetRow.number}:D${targetRow.number}`);
     targetRow.eachCell((cell) => {
@@ -501,6 +516,7 @@ export default function SusunMenuMBG() {
       { width: 15 },  // Protein
       { width: 15 },  // Lemak
       { width: 15 },  // Karbo
+      { width: 15 },  // Serat
       { width: 18 },  // Harga/Kg
       { width: 18 }   // Cost
     ];
@@ -518,8 +534,13 @@ export default function SusunMenuMBG() {
   const target = TARGET_GROUPS[sasaran];
 
   const totals = menuItems.reduce((acc, m) => ({
-    e: acc.e + m.energi, p: acc.p + m.protein, l: acc.l + m.lemak, k: acc.k + m.karbo, c: acc.c + m.cost
-  }), { e: 0, p: 0, l: 0, k: 0, c: 0 });
+    e: acc.e + (Number(m.energi) || 0),
+    p: acc.p + (Number(m.protein) || 0),
+    l: acc.l + (Number(m.lemak) || 0),
+    k: acc.k + (Number(m.karbo) || 0),
+    s: acc.s + (Number(m.serat) || 0),
+    c: acc.c + (Number(m.cost) || 0)
+  }), { e: 0, p: 0, l: 0, k: 0, s: 0, c: 0 });
 
   const finalCost = totals.c * 1.1;
   const costPerPorsiPlusBuffer = finalCost * (1 + (bufferPercent / 100));
@@ -533,8 +554,9 @@ export default function SusunMenuMBG() {
   const hasBuah = menuItems.some(m => m.kategori === "Buah");
   const komponen = [hasPokok, hasHewani, hasNabati, hasSayur, hasBuah];
   const komponenCount = komponen.filter(Boolean).length;
-  const isPiringkuLengkap = komponenCount === 5;
-  const statPiringku = isPiringkuLengkap ? "pass" : komponenCount >= 3 ? "warn" : "fail";
+  const isPiringkuLengkap = komponenCount >= 4; // RELAKSASI: 4 dari 5 komponen genap selama Gizi Pass
+  const isPiringkuSempurna = komponenCount === 5;
+  const statPiringku = isPiringkuSempurna ? "pass" : isPiringkuLengkap ? "pass" : komponenCount === 3 ? "warn" : "fail";
 
   // --- PILAR 2: Kecukupan Gizi Kuantitatif (Permenkes 28/2019 & Juknis BGN 2026) ---
   const statE = (totals.e >= target.minE && totals.e <= target.maxE) ? "pass"
@@ -547,6 +569,7 @@ export default function SusunMenuMBG() {
     : (totals.l >= target.minL * 0.85 && totals.l <= target.maxL * 1.15) ? "warn" : "fail";
   const statK = (totals.k >= target.minK && totals.k <= target.maxK) ? "pass"
     : (totals.k >= target.minK * 0.85 && totals.k <= target.maxK * 1.15) ? "warn" : "fail";
+  const statS = (totals.s >= target.minS) ? "pass" : "warn"; // Fiber ditoleransi, disarankan mencukupi target
 
   // --- Kepatuhan Anggaran ---
   const statC = (finalCost <= target.budgetTarget) ? "pass" : "fail";
@@ -564,12 +587,12 @@ export default function SusunMenuMBG() {
     // Gagal total jika gizi jauh di bawah standar atau komponen sangat kurang
     if (!giziAllPass || komponenCount <= 2) return { label: "❌ Belum Memenuhi Standar", color: "#991b1b", bg: "#fef2f2" };
     if (statC === "fail") return { label: "❌ Anggaran Melebihi Batas", color: "#991b1b", bg: "#fef2f2" };
-    // Sempurna: gizi pass + komponen lengkap
+    // Valid: gizi pass + komponen lengkap (Minimal 4)
     if (isMenuValid) return { label: "✅ Valid & Sesuai Pedoman", color: "#166534", bg: "#f0fdf4" };
-    // Gizi tercukupi tapi komponen belum 5/5
-    if (giziPerfect && !isPiringkuLengkap) return { label: "⚠️ Gizi Tercukupi — Komponen Belum Lengkap", color: "#d97706", bg: "#fffbeb" };
+    // Gizi tercukupi tapi komponen < 4
+    if (giziPerfect && !isPiringkuLengkap) return { label: "⚠️ Gizi Tercukupi — Komponen Kurang Rupa", color: "#d97706", bg: "#fffbeb" };
     // Komponen lengkap tapi gizi belum optimal
-    if (isPiringkuLengkap && !giziPerfect) return { label: "⚠️ Komponen Lengkap — Gizi Perlu Disesuaikan", color: "#d97706", bg: "#fffbeb" };
+    if (isPiringkuLengkap && !giziPerfect) return { label: "⚠️ Komponen Menu Ada — Gizi Perlu Disesuaikan", color: "#d97706", bg: "#fffbeb" };
     // Keduanya warning
     return { label: "⚠️ Hampir Sesuai — Perlu Revisi", color: "#d97706", bg: "#fffbeb" };
   })();
@@ -589,12 +612,12 @@ export default function SusunMenuMBG() {
     if (editingMenuId) {
       // Mode UPDATE: perbarui menu yang sudah ada
       await supabase.from('rencana_menu').update(payload).eq('id', editingMenuId);
-      alert("Menu Berhasil Diperbarui!");
+      showToast("Menu Berhasil Diperbarui!", "success");
       setEditingMenuId(null);
     } else {
       // Mode INSERT: simpan menu baru
       await supabase.from('rencana_menu').insert([payload]);
-      alert("Menu Berhasil Disimpan!");
+      showToast("Menu Berhasil Disimpan!", "success");
     }
     setView("list");
   };
@@ -607,9 +630,26 @@ export default function SusunMenuMBG() {
     );
     if (matchKey) setSasaran(matchKey[0]);
 
-    // Load data menu ke Composer
-    const items = menu.data_menu?.['Makan Siang'] || Object.values(menu.data_menu || {})[0] || [];
-    setMenuItems(items);
+    // Load data menu ke Composer dengan Normalisasi Numerik (Anti-Crash String .toFixed)
+    const rawItems = (menu.data_menu?.['Makan Siang'] || Object.values(menu.data_menu || {})[0] || []) as MenuItem[];
+    const safeItems = rawItems.map(m => ({
+      ...m,
+      gram: Number(m.gram) || 0,
+      berat_kotor: Number(m.berat_kotor) || 0,
+      harga_kg: Number(m.harga_kg) || 0,
+      cost: Number(m.cost) || 0,
+      energi: Number(m.energi) || 0,
+      protein: Number(m.protein) || 0,
+      lemak: Number(m.lemak) || 0,
+      karbo: Number(m.karbo) || 0,
+      serat: Number(m.serat) || 0,
+      fe: Number(m.fe) || 0,
+      vitA: Number(m.vitA) || 0,
+      ca: Number(m.ca) || 0,
+      zn: Number(m.zn) || 0,
+      vitC: Number(m.vitC) || 0,
+    }));
+    setMenuItems(safeItems);
     setEditingMenuId(menu.id);
     setView("compose");
   };
@@ -658,7 +698,16 @@ export default function SusunMenuMBG() {
                       </td>
                     </tr>
                   ))}
-                  {savedMenus.length === 0 && <tr><td colSpan={5} style={{ textAlign: "center", padding: 40, color: "#94a3b8" }}>Belum ada menu yang disusun.</td></tr>}
+                  {savedMenus.length === 0 && (
+                    <tr>
+                      <td colSpan={5} style={{ textAlign: "center", padding: "60px 20px" }}>
+                        <div style={{ fontSize: 48, marginBottom: 16 }}>🍽️</div>
+                        <div style={{ fontSize: 18, fontWeight: 700, color: "#475569", marginBottom: 8 }}>Belum Ada Menu Tersimpan</div>
+                        <div style={{ fontSize: 14, color: "#64748b", marginBottom: 24, maxWidth: 400, margin: "0 auto" }}>Halo! Mari racik Susunan Menu Makan Bergizi Gratis pertama Anda hari ini.</div>
+                        <button onClick={() => setView("compose")} style={{ background: "#1e293b", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>Mulai Racik Menu Sekarang</button>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -752,7 +801,7 @@ export default function SusunMenuMBG() {
       </div>
 
       {/* HORIZONTAL CARDS */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 16, marginBottom: 24 }}>
         <div style={{ background: "#fff", padding: "16px", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><span style={{ background: "#dcfce7", padding: 4, borderRadius: 4 }}>💰</span> Total Anggaran</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginTop: 8 }}>Rp {finalCost.toLocaleString("id-ID")}</div>
@@ -772,6 +821,10 @@ export default function SusunMenuMBG() {
         <div style={{ background: "#fff", padding: "16px", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
           <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><span style={{ background: "#f3e8ff", padding: 4, borderRadius: 4 }}>🍞</span> Total Karbo</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginTop: 8 }}>{totals.k.toFixed(1)} <span style={{ fontSize: 12, color: "#94a3b8" }}>g</span></div>
+        </div>
+        <div style={{ background: "#fff", padding: "16px", borderRadius: 12, border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><span style={{ background: "#fce7f3", padding: 4, borderRadius: 4 }}>🌾</span> Total Serat</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a", marginTop: 8 }}>{totals.s.toFixed(1)} <span style={{ fontSize: 12, color: "#94a3b8" }}>g</span></div>
         </div>
       </div>
 
@@ -876,6 +929,7 @@ export default function SusunMenuMBG() {
                   <th style={{ whiteSpace: "nowrap" }}>PROTEIN</th>
                   <th style={{ whiteSpace: "nowrap" }}>LEMAK</th>
                   <th style={{ whiteSpace: "nowrap" }}>KARBO</th>
+                  <th style={{ whiteSpace: "nowrap" }}>SERAT</th>
                   <th style={{ whiteSpace: "nowrap" }}>HARGA/KG</th>
                   <th style={{ whiteSpace: "nowrap" }}>COST (RP)</th>
                   <th style={{ whiteSpace: "nowrap", textAlign: "center" }}>AKSI</th>
@@ -945,24 +999,25 @@ export default function SusunMenuMBG() {
                         </td>
                       )}
                       <td style={{ fontWeight: 600, color: "#334155", maxWidth: 180, whiteSpace: "normal" }}>{m.nama}</td>
-                      <td>{m.berat_kotor.toFixed(1)}</td>
+                      <td>{Number(m.berat_kotor || 0).toFixed(1)}</td>
                       <td>
                         {isEditing ? (
                           <input type="number" value={editGram} onChange={e => setEditGram(Number(e.target.value))} style={{ width: 60, padding: "4px 6px", borderRadius: 4, border: "1px solid #f59e0b", outline: "none", fontWeight: 600 }} />
-                        ) : m.gram}
+                        ) : Number(m.gram || 0)}
                       </td>
-                      <td>{m.energi.toFixed(1)}</td>
-                      <td>{m.protein.toFixed(1)}</td>
-                      <td>{m.lemak.toFixed(1)}</td>
-                      <td>{m.karbo.toFixed(1)}</td>
+                      <td>{Number(m.energi || 0).toFixed(1)}</td>
+                      <td>{Number(m.protein || 0).toFixed(1)}</td>
+                      <td>{Number(m.lemak || 0).toFixed(1)}</td>
+                      <td>{Number(m.karbo || 0).toFixed(1)}</td>
+                      <td>{Number(m.serat || 0).toFixed(1)}</td>
                       <td>
                         {isEditing ? (
                           <input type="number" value={editHarga} onChange={e => setEditHarga(Number(e.target.value))} style={{ width: 70, padding: "4px 6px", borderRadius: 4, border: "1px solid #f59e0b", outline: "none", fontSize: 11 }} />
                         ) : (
-                          <span style={{ color: "#475569", whiteSpace: "nowrap" }}>Rp {m.harga_kg.toLocaleString("id-ID")}</span>
+                          <span style={{ color: "#475569", whiteSpace: "nowrap" }}>Rp {Number(m.harga_kg || 0).toLocaleString("id-ID")}</span>
                         )}
                       </td>
-                      <td style={{ color: "#059669", fontWeight: 600, whiteSpace: "nowrap" }}>Rp {m.cost.toLocaleString("id-ID")}</td>
+                      <td style={{ color: "#059669", fontWeight: 600, whiteSpace: "nowrap" }}>Rp {Number(m.cost || 0).toLocaleString("id-ID")}</td>
                       <td style={{ paddingRight: 12, textAlign: "center", whiteSpace: "nowrap" }}>
                         {isEditing ? (
                           <>
@@ -979,7 +1034,7 @@ export default function SusunMenuMBG() {
                     </tr>
                   );
                 })}
-                {menuItems.length === 0 && <tr><td colSpan={10} style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>Belum ada bahan yang ditambahkan ke dalam piring.</td></tr>}
+                {menuItems.length === 0 && <tr><td colSpan={11} style={{ padding: 40, textAlign: "center", color: "#94a3b8" }}>Belum ada bahan yang ditambahkan ke dalam piring.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -997,8 +1052,13 @@ export default function SusunMenuMBG() {
               <button onClick={handleSave} disabled={menuItems.length === 0} style={{ flex: 1, padding: "12px", background: editingMenuId ? "#d97706" : "#0f172a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: menuItems.length === 0 ? "not-allowed" : "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
                 {editingMenuId ? "📝 Perbarui Menu" : "💾 Simpan Menu"}
               </button>
-              <button onClick={() => setMenuItems([])} style={{ flex: 1, padding: "12px", background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
-                🗑️ Kosongkan Piring
+              <button onClick={() => {
+                showConfirm("Yakin ingin menghapus seluruh susunan menu ini?", () => {
+                  setMenuItems([]);
+                  showToast("Susunan menu telah dibersihkan.", "success");
+                });
+              }} style={{ flex: 1, padding: "12px", background: "#ef4444", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+                🗑️ Hapus Menu
               </button>
               <button onClick={handleExportExcel} disabled={menuItems.length === 0} style={{ flex: 1, padding: "12px", background: "#10b981", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: menuItems.length === 0 ? "not-allowed" : "pointer", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
                 📊 Ekspor Laporan Excel
@@ -1046,13 +1106,14 @@ export default function SusunMenuMBG() {
               <ProgressBar label="Protein" current={totals.p} min={target.minP} max={target.maxP} unit="g" stat={statP} />
             </div>
 
-            {/* PILAR 3: LEMAK & KARBOHIDRAT */}
+            {/* PILAR 3: LEMAK, KARBO & SERAT */}
             <div style={{ borderBottom: "1px solid #e2e8f0", paddingBottom: 16 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>3. Lemak & Karbohidrat</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#334155" }}>3. Makro Lainnya (Lemak, Karbo, Serat)</span>
               </div>
               <ProgressBar label="Lemak" current={totals.l} min={target.minL} max={target.maxL} unit="g" stat={statL} />
               <ProgressBar label="Karbohidrat" current={totals.k} min={target.minK} max={target.maxK} unit="g" stat={statK} />
+              <ProgressBar label="Serat" current={totals.s} min={target.minS} max={target.maxS} unit="g" stat={statS} />
             </div>
 
             {/* KEPATUHAN ANGGARAN */}
@@ -1112,6 +1173,10 @@ export default function SusunMenuMBG() {
                 <div style={{ flex: 1 }}>
                   <label style={{ fontSize: 12, fontWeight: 700, color: "#475569", display: "block", marginBottom: 6 }}>Karbo (g)</label>
                   <input type="number" value={customBahan.karbohidrat} onChange={e => setCustomBahan({ ...customBahan, karbohidrat: Number(e.target.value) })} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #cbd5e1", outline: "none" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: "#475569", display: "block", marginBottom: 6 }}>Serat (g)</label>
+                  <input type="number" value={customBahan.serat} onChange={e => setCustomBahan({ ...customBahan, serat: Number(e.target.value) })} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #cbd5e1", outline: "none" }} />
                 </div>
               </div>
             </div>

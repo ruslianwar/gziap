@@ -1468,3 +1468,19 @@ tbody td {
 .print-only {
   display: none;
 }
+
+/* ====================================================
+   PENGATURAN RESPONSIVITAS PERANGKAT (TABLET & MOBILE)
+==================================================== */
+@media (max-width: 768px) {
+  /* 1. Card Summary Gizi menjadi 1 kolom menyusun atas-bawah */
+  div[style*="grid-template-columns: repeat(5, 1fr)"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* 2. Form Pencarian TKPI / Input Bahan (Row 2 Properties) menumpuk ke bawah */
+  div[style*="align-items: flex-end"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+}

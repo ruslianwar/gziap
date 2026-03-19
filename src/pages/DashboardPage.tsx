@@ -11,6 +11,8 @@ export default function DashboardPage({ user }: { user?: any }) {
     day: "numeric",
   });
 
+  const [licenseInfo, setLicenseInfo] = useState<{ days_remaining: number; expires_at: string } | null>(null);
+
   const [totalMenu, setTotalMenu] = useState("-");
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [appSettings, setAppSettings] = useState<Record<string, boolean>>({});
@@ -28,13 +30,13 @@ export default function DashboardPage({ user }: { user?: any }) {
       // Ambil 4 menu terbaru sebagai log aktivitas
       const { data } = await supabase
         .from("rencana_menu")
-        .select("nama_paket, created_at, hari")
+        .select("nama_paket, created_at")
         .order("created_at", { ascending: false })
         .limit(4);
 
       if (data) {
         setRecentActivities(data.map(d => ({
-          text: `Menu ${d.nama_paket} (${d.hari}) ditambahkan ke siklus`,
+          text: `Menu ${d.nama_paket} ditambahkan ke siklus`,
           // Format relatif kasar:
           time: new Date(d.created_at).toLocaleDateString("id-ID"),
           dot: "#6366f1"
@@ -42,6 +44,17 @@ export default function DashboardPage({ user }: { user?: any }) {
       }
     }
     loadStats();
+
+    // 2. Load License Info
+    import("../utils/licenseCache").then(({ getLicenseCache }) => {
+      const cache = getLicenseCache();
+      if (cache.data) {
+        setLicenseInfo({
+          expires_at: cache.data.expires_at,
+          days_remaining: cache.data.days_remaining
+        });
+      }
+    });
   }, []);
 
   // Effect untuk load Settings (khusus Superadmin)
@@ -113,6 +126,19 @@ export default function DashboardPage({ user }: { user?: any }) {
             <div className="sc-lbl">{s.lbl}</div>
           </div>
         ))}
+
+        {/* LICENSE BADGE */}
+        {licenseInfo && (
+          <div className="sc" style={{ border: "1px solid #e2e8f0" }}>
+            <div className="sc-icon" style={{ background: licenseInfo.days_remaining < 30 ? "#fee2e2" : "#f0fdf4" }}>
+              🔑
+            </div>
+            <div className="sc-val" style={{ color: licenseInfo.days_remaining < 30 ? "#b91c1c" : "#1c4d32" }}>
+              {licenseInfo.days_remaining} <span style={{ fontSize: 13 }}>Hari</span>
+            </div>
+            <div className="sc-lbl">Sisa Masa Aktif Lisensi</div>
+          </div>
+        )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
@@ -290,7 +316,6 @@ export default function DashboardPage({ user }: { user?: any }) {
           </div>
         </div>
       )}
-
     </div>
   );
 }

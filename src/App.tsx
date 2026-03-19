@@ -23,6 +23,10 @@ import AboutPage from "./pages/AboutPage";
 import FeedbackPage from "./pages/FeedbackPage";
 import AdminFeedbackPage from "./pages/AdminFeedbackPage";
 import BahanKustomPage from "./pages/BahanKustomPage";
+import LicenseManagementPage from "./pages/LicenseManagementPage";
+import LicenseActivationPage from "./pages/LicenseActivationPage";
+import { getDeviceFingerprint } from "./utils/deviceFingerprint";
+import { getLicenseCache } from "./utils/licenseCache";
 
 function App() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,8 +42,52 @@ function App() {
     return localStorage.getItem("sigizi_page") || "dashboard";
   });
 
+  // State Lisensi
+  const [licenseValid, setLicenseValid] = useState<boolean>(true); // Asumsi awal aman (Web/Sudah Aktivasi)
+  const [licenseCacheWarning, setLicenseCacheWarning] = useState<string>("");
+
   useEffect(() => {
-    // 1. Cek sesi saat aplikasi pertama kali dibuka
+    // 1. Cek Lisensi (Khusus Desktop)
+    const checkLicense = async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+      if (!isTauri) {
+        setLicenseValid(true);
+        return;
+      }
+
+      // Cek cache lokal dulu
+      const cache = getLicenseCache();
+      if (cache.isValid) {
+        setLicenseValid(true);
+        return;
+      }
+
+      // Jika ada cache tapi usianya sudah expired toleransi
+      if (cache.isExpiredCache) {
+        setLicenseValid(false);
+        setLicenseCacheWarning("Koneksi internet diperlukan untuk memvalidasi ulang lisensi Anda (lebih dari 7 hari offline).");
+        return;
+      }
+
+      // Jika tidak ada cache, atau valid() mereturn false langsung
+      // Validasi ulang secara cloud
+      try {
+        const fingerprint = await getDeviceFingerprint();
+        if (!fingerprint) {
+          setLicenseValid(false);
+          return;
+        }
+
+        // Baca memory lokal atau jika blm ada biarkan UI Activate License jalan
+        setLicenseValid(false);
+      } catch (err) {
+        setLicenseValid(false);
+      }
+    };
+    checkLicense();
+
+    // 2. Cek sesi saat aplikasi pertama kali dibuka
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session) fetchProfile(session.user);
@@ -84,6 +132,39 @@ function App() {
         data = newProfile;
       }
 
+      // --- SECURITY HARDENING: Account-Device Binding ---
+      const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+      if (isTauri && data) {
+        const cache = getLicenseCache();
+        if (cache.isValid) {
+          // Cari data lisensi di server untuk cek binding
+          const { data: licenseData } = await supabase
+            .from("licenses")
+            .select("id, activated_by_email")
+            .eq("license_key_hash", cache.licenseHash) // Gunakan hash dari cache
+            .single();
+
+          if (licenseData) {
+            if (!licenseData.activated_by_email) {
+              // BINDING PERTAMA: Kunci lisensi ke akun ini
+              await supabase
+                .from("licenses")
+                .update({ activated_by_email: data.email })
+                .eq("id", licenseData.id);
+              console.log("Lisensi berhasil diikat ke akun:", data.email);
+            } else if (licenseData.activated_by_email !== data.email) {
+              // PELANGGARAN: Akun tidak cocok dengan pemilik lisensi di perangkat ini
+              await supabase.auth.signOut();
+              setUserProfile(null);
+              setSession(null);
+              alert(`Akses Ditolak: Perangkat ini sudah terikat dengan akun ${licenseData.activated_by_email}. Silakan gunakan akun yang sesuai.`);
+              return;
+            }
+          }
+        }
+      }
+      // --------------------------------------------------
+
       setUserProfile(data);
     } catch (err) {
       console.error("Gagal memuat profil:", err);
@@ -120,6 +201,19 @@ function App() {
     );
   }
 
+  // Jika aplikasi memanggil jendela aktivasi maka tangkap sebelum masuk layout utama maupun Login Panel
+  if (!licenseValid) {
+    return (
+      <LicenseActivationPage
+        cacheWarning={licenseCacheWarning}
+        onSuccess={() => {
+          setLicenseValid(true);
+          setLicenseCacheWarning("");
+        }}
+      />
+    );
+  }
+
   // Jika tidak ada sesi login, paksa ke halaman Login
   if (!session || !userProfile) {
     return <LoginPage />;
@@ -141,8 +235,8 @@ function App() {
       {currentPage === "fnca" && <SusunMenuMBG />}
       {currentPage === "bahan_kustom" && <BahanKustomPage user={userProfile} />}
 
-      {/* ✅ TAMBAHAN: Rute untuk halaman Rekap Belanja */}
-      {currentPage === "rekap" && <RekapBelanja />}
+      {/* Rekap Belanja dengan sinkronisasi profil user untuk tanda tangan laporan */}
+      {currentPage === "rekap" && <RekapBelanja user={userProfile} />}
 
       {currentPage === "cycle_menu" && <CycleMenuPage />}
       {currentPage === "target_gizi" && <TargetGiziPage />}
@@ -157,13 +251,36 @@ function App() {
       {/* Batasan Akses Halaman User: Hanya Superadmin/Admin */}
       {currentPage === "users" &&
         (userProfile.role === "superadmin" || userProfile.role === "admin") && (
-          <UsersPage />
+          <UsersPage currentUser={userProfile} />
         )}
       {/* Rute Khusus Kotak Laporan untuk Superadmin/Admin */}
       {currentPage === "admin_feedback" &&
         (userProfile.role === "superadmin" || userProfile.role === "admin") && (
           <AdminFeedbackPage />
         )}
+      {/* Rute Khusus Manajemen Lisensi (Hanya Superadmin) */}
+      {currentPage === "license_management" &&
+        (userProfile.role === "superadmin" ? (
+          <LicenseManagementPage />
+        ) : (
+          <div
+            style={{
+              padding: 60,
+              textAlign: "center",
+              background: "#fff",
+              borderRadius: 12,
+              border: "1px solid var(--border)",
+            }}
+          >
+            <div style={{ fontSize: 40, marginBottom: 16 }}>🚫</div>
+            <h2 style={{ margin: "0 0 8px 0", color: "#b91c1c" }}>
+              Akses Ditolak
+            </h2>
+            <p style={{ color: "var(--txt3)" }}>
+              Halaman ini bersifat rahasia dan hanya dapat diakses oleh Superadmin Utama.
+            </p>
+          </div>
+        ))}
       {currentPage === "users" &&
         userProfile.role !== "superadmin" &&
         userProfile.role !== "admin" && (

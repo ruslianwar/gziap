@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../config/supabaseClient";
 import { useUI } from "../contexts/UIContext";
 
-export default function UsersPage() {
+export default function UsersPage({ currentUser }: { currentUser: any }) {
   const { showToast, showConfirm } = useUI();
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,44 +36,56 @@ export default function UsersPage() {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    // Trik Arsitek: Bersihkan spasi gaib dan paksa huruf kecil semua
     const cleanEmail = email.trim().toLowerCase();
 
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email: cleanEmail,
-      password: password, // Password jangan dibersihkan, spasi bisa jadi bagian sandi
-    });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        showToast("Sesi berakhir, silakan login kembali.", "error");
+        setIsSubmitting(false);
+        return;
+      }
 
-    if (authError) {
-      showToast("Gagal membuat akses login: " + authError.message, "error");
-      setIsSubmitting(false);
-      return;
-    }
+      // Panggil Edge Function untuk membuat user secara administratif
+      // Ini mencegah "Auto-Login" yang menimpa sesi Admin
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            action: 'create',
+            payload: {
+              email: cleanEmail,
+              password: password,
+              nama_lengkap: nama,
+              role: role
+            }
+          })
+        }
+      );
 
-    const newUserId = authData.user?.id;
+      const result = await response.json();
 
-    if (newUserId) {
-      const { error: profileError } = await supabase
-        .from("user_profiles")
-        .insert([
-          { id: newUserId, nama_lengkap: nama, email: email, role: role },
-        ]);
-
-      if (!profileError) {
+      if (!response.ok || !result.success) {
+        showToast(`Gagal: ${result.error || "Terjadi kesalahan"}`, "error");
+      } else {
         setNama("");
         setEmail("");
         setPassword("");
         setRole("staff");
-        setShowPassword(false); // Kembalikan ke mode tersembunyi
-        fetchUsers();
-        showToast(`Berhasil! Akun ${email} sekarang bisa digunakan untuk Login.`, "success");
-      } else {
-        showToast("Akses berhasil dibuat, tapi gagal menyimpan profil.", "warning");
-        console.error(profileError);
+        setShowPassword(false);
+        await fetchUsers();
+        showToast(`Berhasil! Akun ${email} telah aktif tanpa mengganggu sesi Anda.`, "success");
       }
+    } catch (err: any) {
+      showToast("Kesalahan sistem: " + err.message, "error");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
   };
 
   const handleDelete = async (id: string, namaUser: string) => {
@@ -252,7 +264,12 @@ export default function UsersPage() {
                     fontSize: 14,
                   }}
                 >
-                  <option value="admin">Administrator (Akses Penuh)</option>
+                  {currentUser.role === "superadmin" && (
+                    <option value="superadmin">Superadmin (Pendiri Sistem)</option>
+                  )}
+                  {(currentUser.role === "superadmin" || currentUser.role === "admin") && (
+                    <option value="admin">Administrator (Akses Penuh)</option>
+                  )}
                   <option value="ahligizi">Ahli Gizi (Akses FNCA)</option>
                   <option value="staff">Staf Gudang (Supply Chain)</option>
                 </select>

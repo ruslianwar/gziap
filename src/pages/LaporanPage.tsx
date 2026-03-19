@@ -5,6 +5,8 @@ import { useUI } from "../contexts/UIContext";
 import { supabase } from "../config/supabaseClient";
 import ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeFile } from "@tauri-apps/plugin-fs";
 
 export default function LaporanPage() {
   const { showToast } = useUI();
@@ -102,12 +104,31 @@ export default function LaporanPage() {
       // Format semua kolom
       sheet.columns.forEach(column => column.width = 18);
 
-      // Simpan File
+      // --- DINAMIS: Deteksi Paket vs Browser ---
+      const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+      const fileName = `Laporan_${tipe.toUpperCase()}_${tglDari}_sampai_${tglSampai}.xlsx`;
       const buffer = await workbook.xlsx.writeBuffer();
-      const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-      saveAs(blob, `Laporan_${tipe.toUpperCase()}_${tglDari}_sampai_${tglSampai}.xlsx`);
 
-      showToast(`Laporan ${tipe.toUpperCase()} (.XLSX) Excel Rapi berhasil diunduh!`, "success");
+      if (isTauri) {
+        // Gunakan Tauri Native Save Dialog
+        const path = await save({
+          filters: [{
+            name: 'Excel Workbook',
+            extensions: ['xlsx']
+          }],
+          defaultPath: fileName
+        });
+
+        if (path) {
+          await writeFile(path, new Uint8Array(buffer as ArrayBuffer));
+          showToast(`Laporan disimpan di: ${path}`, "success");
+        }
+      } else {
+        // Fallback Browser
+        const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        saveAs(blob, fileName);
+        showToast(`Laporan ${tipe.toUpperCase()} (.XLSX) berhasil diunduh!`, "success");
+      }
 
     } catch (err: any) {
       showToast("Gagal Mengekstraksi Laporan Excel: " + err.message, "error");

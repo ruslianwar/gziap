@@ -33,7 +33,21 @@ export default function MainLayout({
     nomor_str_nip: "",
   });
 
+  // State Lisensi untuk tampilan
+  const [licenseInfo, setLicenseInfo] = useState<{ expires_at: string; days_remaining: number } | null>(null);
+
   useEffect(() => {
+    // Ambil info lisensi dari cache
+    import("../utils/licenseCache").then(({ getLicenseCache }) => {
+      const cache = getLicenseCache();
+      if (cache.data) {
+        setLicenseInfo({
+          expires_at: cache.data.expires_at,
+          days_remaining: cache.data.days_remaining
+        });
+      }
+    });
+
     if (user?.id) {
       fetchUserProfile();
     }
@@ -99,6 +113,7 @@ export default function MainLayout({
   //const isAdmin = user?.role === "admin";
   // CEK AKSES & VISIBILITAS MODUL DARI DATABASE
   const isAdmin = user?.role === "superadmin" || user?.role === "admin";
+  const isSuperadmin = user?.role === "superadmin";
   const [appSettings, setAppSettings] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -156,7 +171,10 @@ export default function MainLayout({
         { id: "laporan", icon: "📈", label: "Laporan & Export" },
         ...(isAdmin ? [
           { id: "users", icon: "👥", label: "Manajemen User" },
-          { id: "admin_feedback", icon: "📬", label: "Kotak Laporan" }
+          { id: "admin_feedback", icon: "📬", label: "Kotak Laporan" },
+        ] : []),
+        ...(isSuperadmin ? [
+          { id: "license_management", icon: "🔑", label: "Lisensi SaaS" }
         ] : []),
         { id: "about", icon: "ℹ️", label: "Tentang Aplikasi" },
         ...(!isAdmin ? [{ id: "feedback", icon: "📣", label: "Bantuan & Masukan" }] : []),
@@ -292,6 +310,25 @@ export default function MainLayout({
                 <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#475569", marginBottom: 6 }}>Nomor STR / NIP (Opsional)</label>
                 <input value={editProfileForm.nomor_str_nip} onChange={e => setEditProfileForm({ ...editProfileForm, nomor_str_nip: e.target.value })} type="text" style={{ width: "100%", padding: "10px 12px", border: "1px solid #cbd5e1", borderRadius: 8, outline: "none" }} placeholder="Kosongkan jika Anda Mahasiswa/Belum Memiliki" />
               </div>
+
+              {/* TAMPILAN INFORMASI LISENSI */}
+              {licenseInfo && (
+                <div style={{ padding: 16, background: "#f8fafc", borderRadius: 12, border: "1px solid #e2e8f0", marginTop: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1c4d32", marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span>🔑</span> Status Lisensi SaaS
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                    <span style={{ color: "#64748b" }}>Berlaku Hingga:</span>
+                    <span style={{ fontWeight: 600, color: "#0f172a" }}>{new Date(licenseInfo.expires_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginTop: 4 }}>
+                    <span style={{ color: "#64748b" }}>Sisa Masa Aktif:</span>
+                    <span style={{ fontWeight: 700, color: licenseInfo.days_remaining < 30 ? "#dc2626" : "#059669" }}>
+                      {licenseInfo.days_remaining} Hari Lagi
+                    </span>
+                  </div>
+                </div>
+              )}
 
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
                 <button type="button" onClick={() => setIsProfileModalOpen(false)} style={{ padding: "10px 16px", background: "#f1f5f9", color: "#475569", borderRadius: 8, fontWeight: 600, border: "none", cursor: "pointer" }}>Batal</button>

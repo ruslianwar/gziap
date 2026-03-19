@@ -29,3 +29,11 @@ dist-ssr
 
 # Gemini agent data
 .gemini/
+
+# Tauri - Build artifacts Rust (sangat besar, tidak perlu di-upload)
+src-tauri/target/
+
+# Backup & temp files
+*.bak
+error.txt
+src/layouts/diff.txt

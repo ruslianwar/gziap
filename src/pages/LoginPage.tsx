@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../config/supabaseClient";
+import loginIllustration from "../assets/login_illustration.png";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -129,7 +130,7 @@ export default function LoginPage() {
           opacity: 0.2,
           pointerEvents: "none"
         }}>
-          <img src="/src/assets/login_illustration.png" alt="Illustration" style={{ width: "100%", height: "auto" }} />
+          <img src={loginIllustration} alt="Illustration" style={{ width: "100%", height: "auto" }} />
         </div>
       </div>
 

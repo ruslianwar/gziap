@@ -6,6 +6,9 @@ import { saveAs } from "file-saver";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
+// Deteksi lingkungan Tauri vs Browser
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
 interface SavedMenu {
   id: string;
   nama_paket: string;
@@ -183,8 +186,23 @@ export default function RekapBelanja({ user }: { user: any }) {
       worksheet.getColumn(4).width = 20;
 
       const buffer = await workbook.xlsx.writeBuffer();
-      saveAs(new Blob([buffer]), `Rekap_Belanja_${user?.nama_sppg_instansi || 'SiGizi'}_${Date.now()}.xlsx`);
-      showToast("Berhasil mengekspor Excel!", "success");
+      const fileName = `Rekap_Belanja_${user?.nama_sppg_instansi || 'SiGizi'}_${Date.now()}.xlsx`;
+
+      if (isTauri) {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const { writeFile } = await import('@tauri-apps/plugin-fs');
+        const path = await save({
+          filters: [{ name: 'Excel Workbook', extensions: ['xlsx'] }],
+          defaultPath: fileName
+        });
+        if (path) {
+          await writeFile(path, new Uint8Array(buffer as ArrayBuffer));
+          showToast(`Tersimpan: ${path}`, 'success');
+        }
+      } else {
+        saveAs(new Blob([buffer]), fileName);
+        showToast('Berhasil mengekspor Excel!', 'success');
+      }
     } catch (err: any) {
       showToast("Gagal ekspor: " + err.message, "error");
     } finally {
@@ -193,7 +211,7 @@ export default function RekapBelanja({ user }: { user: any }) {
   };
 
   // --- FUNGSI EKSPOR PDF ---
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (rekapHasil.length === 0) return;
     setIsExporting(true);
 
@@ -257,8 +275,24 @@ export default function RekapBelanja({ user }: { user: any }) {
       doc.setFontSize(8);
       doc.text(user?.nama_sppg_instansi || "Instansi", 140, finalY + 30);
 
-      doc.save(`Rekap_Belanja_${user?.nama_sppg_instansi || "SiGizi"}_${Date.now()}.pdf`);
-      showToast("Berhasil mengekspor PDF!", "success");
+      const pdfFileName = `Rekap_Belanja_${user?.nama_sppg_instansi || 'SiGizi'}_${Date.now()}.pdf`;
+
+      if (isTauri) {
+        const { save } = await import('@tauri-apps/plugin-dialog');
+        const { writeFile } = await import('@tauri-apps/plugin-fs');
+        const pdfPath = await save({
+          filters: [{ name: 'PDF Document', extensions: ['pdf'] }],
+          defaultPath: pdfFileName
+        });
+        if (pdfPath) {
+          const pdfBuffer = doc.output('arraybuffer');
+          await writeFile(pdfPath, new Uint8Array(pdfBuffer));
+          showToast(`Tersimpan: ${pdfPath}`, 'success');
+        }
+      } else {
+        doc.save(pdfFileName);
+        showToast('Berhasil mengekspor PDF!', 'success');
+      }
     } catch (err: any) {
       showToast("Gagal ekspor PDF: " + err.message, "error");
     } finally {
